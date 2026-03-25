@@ -58,7 +58,204 @@ HOTKEY_FIELDS = (
 DEFAULT_HOTKEYS = {action: hotkey for action, _label, _description, hotkey in HOTKEY_FIELDS}
 HOTKEY_LABELS = {action: label for action, label, _description, _hotkey in HOTKEY_FIELDS}
 HOTKEY_DESCRIPTIONS = {action: description for action, _label, description, _hotkey in HOTKEY_FIELDS}
-BUILD_SIGNATURE = "async audio / tray online / hotkeys configurable"
+DEFAULT_LANGUAGE = "en"
+SUPPORTED_LANGUAGES = ("en", "es")
+HOTKEY_TRANSLATIONS = {
+    "en": {
+        "toggle_enabled": {"label": "TOGGLE ENGINE", "description": "Turn the sound engine on or off"},
+        "volume_up": {"label": "VOLUME UP", "description": "Increase output level"},
+        "volume_down": {"label": "VOLUME DOWN", "description": "Decrease output level"},
+        "hide_window": {"label": "SEND TO TRAY", "description": "Hide the window and keep the tray icon active"},
+        "exit_application": {"label": "EXIT SESSION", "description": "Close the resident application completely"},
+    },
+    "es": {
+        "toggle_enabled": {"label": "ACTIVAR MOTOR", "description": "Activa o silencia el motor"},
+        "volume_up": {"label": "SUBIR VOLUMEN", "description": "Sube el nivel de salida"},
+        "volume_down": {"label": "BAJAR VOLUMEN", "description": "Reduce el nivel de salida"},
+        "hide_window": {"label": "ENVIAR AL TRAY", "description": "Oculta la ventana y deja el icono residente"},
+        "exit_application": {"label": "CERRAR SESION", "description": "Cierra por completo la aplicacion residente"},
+    },
+}
+TRANSLATIONS = {
+    "en": {
+        "panel_engine_title": "ACOUSTIC TYPE ENGINE",
+        "panel_engine_subtitle": "Realtime resident keyboard ambience",
+        "panel_controls_title": "CONTROL CORE",
+        "panel_controls_subtitle": "Manual override",
+        "panel_output_title": "OUTPUT MATRIX",
+        "panel_output_subtitle": "Click the bars to set intensity",
+        "hero_tagline": "Future mechanical type ambience for Windows",
+        "build_signature": "ASYNC AUDIO / TRAY ONLINE / HOTKEYS CONFIGURABLE",
+        "version_chip": "VERSION {version}",
+        "button_send_to_tray": "SEND TO TRAY",
+        "button_exit_application": "EXIT APPLICATION",
+        "button_minimize_to_tray": "MINIMIZE TO TRAY",
+        "button_exit_session": "EXIT SESSION",
+        "section_command_keys": "COMMAND KEYS",
+        "config_saved_in": "Persistent profile saved in {config_name}",
+        "button_apply_hotkeys": "APPLY HOTKEYS",
+        "button_reset_defaults": "RESET DEFAULTS",
+        "button_fn_lab": "FN CAPTURE LAB",
+        "button_about": "ABOUT",
+        "output_hint": "Dial the ring or click the bars to set live output with exact persistence.",
+        "output_state_active": "TRAY MIRROR ACTIVE",
+        "output_state_muted": "AUDIO PATH MUTED",
+        "output_tray_label": "TRAY",
+        "output_exit_label": "EXIT",
+        "button_decrease_volume": "- 5%",
+        "button_increase_volume": "+ 5%",
+        "menu_file": "File",
+        "menu_settings": "Settings",
+        "menu_language": "Language",
+        "menu_help": "Help",
+        "menu_file_send_to_tray": "Send to tray",
+        "menu_file_show_window": "Show window",
+        "menu_file_exit": "Exit",
+        "menu_settings_apply_hotkeys": "Apply hotkeys",
+        "menu_settings_reset_hotkeys": "Reset hotkeys",
+        "menu_settings_fn_lab": "Fn Capture Lab",
+        "menu_help_about": "About {version}",
+        "language_option_en": "English",
+        "language_option_es": "Spanish",
+        "status_word_active": "ACTIVE",
+        "status_word_muted": "MUTED",
+        "toggle_deactivate": "DEACTIVATE ENGINE",
+        "toggle_reactivate": "REACTIVATE ENGINE",
+        "mixer_online": "audio bus online",
+        "mixer_unavailable": "audio bus unavailable",
+        "status_summary": "Engine status: {status}\nMixer: {mixer}\nConfig: {config_name}",
+        "substatus_summary": "resident keyboard hook / tray armed / non-blocking audio path",
+        "health_hook_live": "HOOK LIVE",
+        "health_hook_idle": "HOOK IDLE",
+        "health_tray_ready": "TRAY READY",
+        "health_async_audio": "ASYNC AUDIO",
+        "volume_output_level": "OUTPUT LEVEL  {volume:03d}%",
+        "window_tray_hint": "Window close or minimize sends the app to tray.\n{summary}",
+        "hotkeys_persisted": "Hotkeys persisted in {config_name} and reloaded on startup.",
+        "hotkeys_applied": "Hotkeys applied and saved in {config_name}.",
+        "hotkeys_reset": "Default hotkeys restored.",
+        "hotkeys_apply_error": "Could not apply hotkeys: {error}",
+        "hotkeys_reset_error": "Could not restore default hotkeys: {error}",
+        "hotkey_requires_valid": "{label} requires a valid shortcut.",
+        "hotkey_duplicate": "Shortcut {hotkey} is duplicated.",
+        "hotkey_empty": "Shortcut for {label} cannot be empty.",
+        "tray_title_active": "Active",
+        "tray_title_muted": "Muted",
+        "tray_menu_show_window": "Show window",
+        "tray_menu_sound_active": "Sound active",
+        "tray_menu_exit": "Exit",
+        "fn_capture_window_title": "{app_name} {version} - Fn Capture Lab",
+        "fn_capture_heading": "FN CAPTURE LAB",
+        "fn_capture_description": "Press Fn, Fn+another key or any special key. If Windows reports the event, it will appear here with its name and scan code.",
+        "fn_capture_clear": "CLEAR LOG",
+        "fn_capture_copy": "COPY LOG",
+        "fn_capture_close": "CLOSE",
+        "fn_capture_status_intro": "Press Fn and other keys to inspect name, scan code and event type.",
+        "fn_capture_status_no_event": "Press Fn. If no event appears, the keyboard firmware is not exposing it to Windows.",
+        "fn_capture_status_detected": "Fn was detected by Windows. You can map it using the event shown above.",
+        "fn_capture_status_hidden": "Press Fn. If no new row appears, the keyboard firmware is consuming it.",
+        "fn_capture_status_no_entries": "There are no captured events to copy yet.",
+        "fn_capture_status_copied": "Capture log copied to the clipboard.",
+        "fn_missing_name": "(unnamed)",
+        "diag_field_type": "type",
+        "diag_field_scan": "scan",
+        "diag_field_name": "name",
+        "about_title": "About {app_name}",
+        "about_message": "{app_name} {version}\nAuthor: {author}\nLicense: {license}\nCopyright (c) {year} {author}",
+        "volume_meter_title": "AMPLITUDE BUS",
+        "volume_meter_footer": "VECTOR OUTPUT",
+        "output_dial_title": "OUTPUT DIAL",
+    },
+    "es": {
+        "panel_engine_title": "MOTOR ACUSTICO",
+        "panel_engine_subtitle": "Ambiente residente de teclado en tiempo real",
+        "panel_controls_title": "NUCLEO DE CONTROL",
+        "panel_controls_subtitle": "Control manual",
+        "panel_output_title": "MATRIZ DE SALIDA",
+        "panel_output_subtitle": "Haz clic en las barras para ajustar la intensidad",
+        "hero_tagline": "Ambiente mecanico futurista para teclados en Windows",
+        "build_signature": "AUDIO ASINCRONO / TRAY ACTIVO / ATAJOS CONFIGURABLES",
+        "version_chip": "VERSION {version}",
+        "button_send_to_tray": "ENVIAR AL TRAY",
+        "button_exit_application": "SALIR DE LA APP",
+        "button_minimize_to_tray": "MINIMIZAR AL TRAY",
+        "button_exit_session": "CERRAR SESION",
+        "section_command_keys": "ATAJOS",
+        "config_saved_in": "Perfil persistente guardado en {config_name}",
+        "button_apply_hotkeys": "APLICAR ATAJOS",
+        "button_reset_defaults": "RESTAURAR ATAJOS",
+        "button_fn_lab": "LABORATORIO FN",
+        "button_about": "ACERCA DE",
+        "output_hint": "Gira el anillo o haz clic en las barras para ajustar la salida en vivo con persistencia exacta.",
+        "output_state_active": "MODO TRAY ACTIVO",
+        "output_state_muted": "RUTA DE AUDIO SILENCIADA",
+        "output_tray_label": "TRAY",
+        "output_exit_label": "SALIR",
+        "button_decrease_volume": "- 5%",
+        "button_increase_volume": "+ 5%",
+        "menu_file": "Archivo",
+        "menu_settings": "Configuracion",
+        "menu_language": "Idioma",
+        "menu_help": "Ayuda",
+        "menu_file_send_to_tray": "Enviar al tray",
+        "menu_file_show_window": "Mostrar ventana",
+        "menu_file_exit": "Salir",
+        "menu_settings_apply_hotkeys": "Aplicar atajos",
+        "menu_settings_reset_hotkeys": "Restaurar atajos",
+        "menu_settings_fn_lab": "Laboratorio Fn",
+        "menu_help_about": "Acerca de {version}",
+        "language_option_en": "Ingles",
+        "language_option_es": "Espanol",
+        "status_word_active": "ACTIVO",
+        "status_word_muted": "SILENCIADO",
+        "toggle_deactivate": "DESACTIVAR MOTOR",
+        "toggle_reactivate": "REACTIVAR MOTOR",
+        "mixer_online": "bus de audio en linea",
+        "mixer_unavailable": "bus de audio no disponible",
+        "status_summary": "Estado del motor: {status}\nMixer: {mixer}\nConfig: {config_name}",
+        "substatus_summary": "hook residente de teclado / tray armado / ruta de audio no bloqueante",
+        "health_hook_live": "HOOK ACTIVO",
+        "health_hook_idle": "HOOK EN PAUSA",
+        "health_tray_ready": "TRAY LISTO",
+        "health_async_audio": "AUDIO ASINCRONO",
+        "volume_output_level": "NIVEL DE SALIDA  {volume:03d}%",
+        "window_tray_hint": "Cerrar o minimizar envia la app a la bandeja.\n{summary}",
+        "hotkeys_persisted": "Los atajos se guardaron en {config_name} y se recargan al iniciar.",
+        "hotkeys_applied": "Atajos aplicados y guardados en {config_name}.",
+        "hotkeys_reset": "Atajos por defecto restaurados.",
+        "hotkeys_apply_error": "No se pudieron aplicar los atajos: {error}",
+        "hotkeys_reset_error": "No se pudieron restaurar los atajos por defecto: {error}",
+        "hotkey_requires_valid": "{label} requiere un atajo valido.",
+        "hotkey_duplicate": "El atajo {hotkey} esta repetido.",
+        "hotkey_empty": "El atajo para {label} no puede quedar vacio.",
+        "tray_title_active": "Activo",
+        "tray_title_muted": "Silenciado",
+        "tray_menu_show_window": "Mostrar ventana",
+        "tray_menu_sound_active": "Sonido activo",
+        "tray_menu_exit": "Salir",
+        "fn_capture_window_title": "{app_name} {version} - Laboratorio Fn",
+        "fn_capture_heading": "LABORATORIO FN",
+        "fn_capture_description": "Presiona Fn, Fn+otra tecla o cualquier tecla especial. Si Windows reporta el evento, quedara registrado aqui con nombre y scan code.",
+        "fn_capture_clear": "LIMPIAR LOG",
+        "fn_capture_copy": "COPIAR LOG",
+        "fn_capture_close": "CERRAR",
+        "fn_capture_status_intro": "Presiona Fn y otras teclas para inspeccionar nombre, scan code y tipo de evento.",
+        "fn_capture_status_no_event": "Presiona Fn. Si no aparece ningun evento, el teclado no la expone a Windows.",
+        "fn_capture_status_detected": "Fn fue detectada por Windows. Ya puedes mapearla con el evento real mostrado arriba.",
+        "fn_capture_status_hidden": "Presiona Fn. Si no aparece ninguna fila nueva, el firmware del teclado la esta consumiendo.",
+        "fn_capture_status_no_entries": "Todavia no hay eventos para copiar.",
+        "fn_capture_status_copied": "Log de captura copiado al portapapeles.",
+        "fn_missing_name": "(sin nombre)",
+        "diag_field_type": "tipo",
+        "diag_field_scan": "scan",
+        "diag_field_name": "nombre",
+        "about_title": "Acerca de {app_name}",
+        "about_message": "{app_name} {version}\nAutor: {author}\nLicencia: {license}\nCopyright (c) {year} {author}",
+        "volume_meter_title": "BUS DE AMPLITUD",
+        "volume_meter_footer": "SALIDA VECTORIAL",
+        "output_dial_title": "DIAL DE SALIDA",
+    },
+}
 
 KEY_NAME_OVERRIDES = {
     "right windows": "61",
@@ -162,6 +359,14 @@ def normalize_hotkey(value: object) -> str | None:
     return "+".join(parts)
 
 
+def normalize_language(value: object) -> str:
+    if isinstance(value, str):
+        candidate = value.strip().lower()
+        if candidate in SUPPORTED_LANGUAGES:
+            return candidate
+    return DEFAULT_LANGUAGE
+
+
 def format_hotkey(value: str) -> str:
     return " + ".join(part.upper() for part in value.split("+"))
 
@@ -202,6 +407,7 @@ class SoundEngine:
         self.audio_dir = resolve_audio_dir()
         self.volume = DEFAULT_VOLUME
         self.enabled = True
+        self.language = DEFAULT_LANGUAGE
         self.hotkeys = dict(DEFAULT_HOTKEYS)
         self.pressed_keys: set[tuple[int | None, str, str]] = set()
         self.sound_files = self._discover_sound_files()
@@ -331,6 +537,7 @@ class SoundEngine:
         except (TypeError, ValueError):
             self.volume = clamp(self.volume)
         self.enabled = bool(data.get("enabled", self.enabled))
+        self.language = normalize_language(data.get("language", self.language))
         stored_hotkeys = data.get("hotkeys", {})
         if isinstance(stored_hotkeys, dict):
             merged = dict(DEFAULT_HOTKEYS)
@@ -349,6 +556,7 @@ class SoundEngine:
         payload = {
             "volume": round(self.volume, 2),
             "enabled": self.enabled,
+            "language": self.language,
             "hotkeys": self.hotkeys,
             "version": APP_VERSION,
         }
@@ -374,6 +582,10 @@ class SoundEngine:
 
     def set_hotkeys(self, hotkeys: dict[str, str]) -> None:
         self.hotkeys = dict(hotkeys)
+        self.save_settings()
+
+    def set_language(self, language: str) -> None:
+        self.language = normalize_language(language)
         self.save_settings()
 
     def handle_key_event(self, event: keyboard.KeyboardEvent) -> None:
@@ -425,14 +637,21 @@ class BucklespringApp:
         self.substatus_var = tk.StringVar()
         self.volume_label_var = tk.StringVar()
         self.hotkey_summary_var = tk.StringVar()
-        self.hotkey_feedback_var = tk.StringVar()
-        self.version_var = tk.StringVar(value=f"VERSION {APP_VERSION}")
-        self.signature_var = tk.StringVar(value=BUILD_SIGNATURE.upper())
+        self.language_var = tk.StringVar(value=self.engine.language)
+        self.hotkey_feedback_key = "hotkeys_persisted"
+        self.hotkey_feedback_kwargs = {"config_name": resolve_config_path().name}
+        self.hotkey_feedback_color = TEXT_MUTED
+        self.hotkey_feedback_var = tk.StringVar(value=self.tr(self.hotkey_feedback_key, **self.hotkey_feedback_kwargs))
+        self.version_var = tk.StringVar(value=self.tr("version_chip", version=APP_VERSION))
+        self.signature_var = tk.StringVar(value=self.tr("build_signature"))
         self.volume_var = tk.IntVar(value=int(round(self.engine.volume * 100)))
         self.hotkey_entry_vars = {
             action: tk.StringVar(value=format_hotkey(self.engine.hotkeys[action]))
             for action, _label, _description, _default in HOTKEY_FIELDS
         }
+        self.localized_panels: list[dict[str, object]] = []
+        self.hotkey_label_widgets: dict[str, tk.Label] = {}
+        self.hotkey_description_widgets: dict[str, tk.Label] = {}
         self.hotkey_callbacks = {
             "toggle_enabled": self._hotkey_toggle_enabled,
             "volume_up": self._hotkey_volume_up,
@@ -445,7 +664,14 @@ class BucklespringApp:
         self.diagnostic_events: queue.Queue[KeyEventSnapshot] = queue.Queue()
         self.fn_capture_window: tk.Toplevel | None = None
         self.fn_capture_text: scrolledtext.ScrolledText | None = None
-        self.fn_capture_status_var = tk.StringVar(value="Presiona Fn y otras teclas para inspeccionar nombre, scan code y tipo de evento.")
+        self.fn_capture_heading_label: tk.Label | None = None
+        self.fn_capture_description_label: tk.Label | None = None
+        self.fn_capture_clear_button: tk.Button | None = None
+        self.fn_capture_copy_button: tk.Button | None = None
+        self.fn_capture_close_button: tk.Button | None = None
+        self.fn_capture_status_key = "fn_capture_status_intro"
+        self.fn_capture_status_kwargs: dict[str, object] = {}
+        self.fn_capture_status_var = tk.StringVar(value=self.tr(self.fn_capture_status_key))
         self.fn_capture_samples = 0
 
         self.tray_icon = pystray.Icon(
@@ -453,9 +679,9 @@ class BucklespringApp:
             self.load_icon_image(),
             TRAY_TITLE,
             menu=pystray.Menu(
-                pystray.MenuItem("Mostrar ventana", self._tray_show_window, default=True),
-                pystray.MenuItem("Sonido activo", self._tray_toggle_enabled, checked=lambda item: self.engine.enabled),
-                pystray.MenuItem("Salir", self._tray_exit),
+                pystray.MenuItem(lambda item: self.tr("tray_menu_show_window"), self._tray_show_window, default=True),
+                pystray.MenuItem(lambda item: self.tr("tray_menu_sound_active"), self._tray_toggle_enabled, checked=lambda item: self.engine.enabled),
+                pystray.MenuItem(lambda item: self.tr("tray_menu_exit"), self._tray_exit),
             ),
         )
 
@@ -472,10 +698,68 @@ class BucklespringApp:
         self._build_menu()
         self._bind_menu_shortcuts()
         self._register_keyboard_hooks()
+        self._apply_localized_text()
         self.refresh_ui()
         self._draw_background()
         self._animate_background()
         self._drain_diagnostic_queue()
+
+    def tr(self, key: str, **kwargs: object) -> str:
+        translations = TRANSLATIONS.get(self.engine.language, TRANSLATIONS[DEFAULT_LANGUAGE])
+        fallback = TRANSLATIONS[DEFAULT_LANGUAGE]
+        template = translations.get(key, fallback.get(key, key))
+        return template.format(**kwargs)
+
+    def hotkey_label(self, action: str) -> str:
+        translations = HOTKEY_TRANSLATIONS.get(self.engine.language, HOTKEY_TRANSLATIONS[DEFAULT_LANGUAGE])
+        return translations.get(action, {}).get("label", HOTKEY_LABELS[action])
+
+    def hotkey_description(self, action: str) -> str:
+        translations = HOTKEY_TRANSLATIONS.get(self.engine.language, HOTKEY_TRANSLATIONS[DEFAULT_LANGUAGE])
+        return translations.get(action, {}).get("description", HOTKEY_DESCRIPTIONS[action])
+
+    def _set_hotkey_feedback(self, key: str, *, color: str, **kwargs: object) -> None:
+        self.hotkey_feedback_key = key
+        self.hotkey_feedback_kwargs = dict(kwargs)
+        self.hotkey_feedback_color = color
+        self.hotkey_feedback_var.set(self.tr(key, **kwargs))
+        if hasattr(self, "hotkey_feedback_label"):
+            self.hotkey_feedback_label.configure(fg=color)
+
+    def _set_fn_capture_status(self, key: str, **kwargs: object) -> None:
+        self.fn_capture_status_key = key
+        self.fn_capture_status_kwargs = dict(kwargs)
+        self.fn_capture_status_var.set(self.tr(key, **kwargs))
+
+    def _apply_localized_text(self) -> None:
+        self.version_var.set(self.tr("version_chip", version=APP_VERSION))
+        self.signature_var.set(self.tr("build_signature"))
+        for panel in self.localized_panels:
+            panel["title_label"].configure(text=self.tr(str(panel["title_key"])))
+            panel["subtitle_label"].configure(text=self.tr(str(panel["subtitle_key"])))
+
+        self.hero_tagline_label.configure(text=self.tr("hero_tagline"))
+        self.hero_tray_button.configure(text=self.tr("button_send_to_tray"))
+        self.hero_exit_button.configure(text=self.tr("button_exit_application"))
+        self.hide_button.configure(text=self.tr("button_minimize_to_tray"))
+        self.exit_button.configure(text=self.tr("button_exit_session"))
+        self.command_keys_label.configure(text=self.tr("section_command_keys"))
+        self.config_path_label.configure(text=self.tr("config_saved_in", config_name=resolve_config_path().name))
+        for action, widget in self.hotkey_label_widgets.items():
+            widget.configure(text=self.hotkey_label(action))
+        for action, widget in self.hotkey_description_widgets.items():
+            widget.configure(text=self.hotkey_description(action))
+        self.hotkey_apply_button.configure(text=self.tr("button_apply_hotkeys"))
+        self.hotkey_reset_button.configure(text=self.tr("button_reset_defaults"))
+        self.fn_lab_button.configure(text=self.tr("button_fn_lab"))
+        self.about_button.configure(text=self.tr("button_about"))
+        self.output_hint_label.configure(text=self.tr("output_hint"))
+        self.decrease_button.configure(text=self.tr("button_decrease_volume"))
+        self.increase_button.configure(text=self.tr("button_increase_volume"))
+        self._set_hotkey_feedback(self.hotkey_feedback_key, color=self.hotkey_feedback_color, **self.hotkey_feedback_kwargs)
+        self._set_fn_capture_status(self.fn_capture_status_key, **self.fn_capture_status_kwargs)
+        self._refresh_fn_capture_window_texts()
+        self._update_menu_labels()
 
     def _build_ui(self) -> None:
         self.surface.grid_rowconfigure(0, weight=0)
@@ -483,9 +767,29 @@ class BucklespringApp:
         self.surface.grid_columnconfigure(0, weight=1)
         self.surface.grid_columnconfigure(1, weight=1)
 
-        hero = self._create_panel(self.surface, row=0, column=0, columnspan=2, title="ACOUSTIC TYPE ENGINE", subtitle="Realtime resident keyboard ambience")
-        controls = self._create_panel(self.surface, row=1, column=0, title="CONTROL CORE", subtitle="Manual override")
-        output = self._create_panel(self.surface, row=1, column=1, title="OUTPUT MATRIX", subtitle="Click the bars to set intensity")
+        hero = self._create_panel(
+            self.surface,
+            row=0,
+            column=0,
+            columnspan=2,
+            title_key="panel_engine_title",
+            subtitle_key="panel_engine_subtitle",
+        )
+        controls = self._create_panel(
+            self.surface,
+            row=1,
+            column=0,
+            title_key="panel_controls_title",
+            subtitle_key="panel_controls_subtitle",
+        )
+        output = self._create_panel(
+            self.surface,
+            row=1,
+            column=1,
+            title_key="panel_output_title",
+            subtitle_key="panel_output_subtitle",
+        )
+        self.localized_panels = [hero, controls, output]
 
         hero_body = hero["body"]
         hero_body.grid_columnconfigure(0, weight=2)
@@ -505,14 +809,15 @@ class BucklespringApp:
             font=("Bahnschrift SemiCondensed", 28, "bold"),
             anchor="w",
         ).pack(anchor="w")
-        tk.Label(
+        self.hero_tagline_label = tk.Label(
             left_hero,
-            text="Future mechanical type ambience for Windows",
+            text=self.tr("hero_tagline"),
             bg=PANEL_ALT_COLOR,
             fg=TEXT_MUTED,
             font=("Consolas", 11),
             anchor="w",
-        ).pack(anchor="w", pady=(4, 12))
+        )
+        self.hero_tagline_label.pack(anchor="w", pady=(4, 12))
         tk.Label(
             left_hero,
             textvariable=self.substatus_var,
@@ -550,9 +855,9 @@ class BucklespringApp:
             pady=6,
         )
         self.version_chip.pack(anchor="e", pady=(14, 12))
-        self.hero_tray_button = self._make_action_button(right_hero, "SEND TO TRAY", self.hide_window, "#0a3340", ACCENT_CYAN)
+        self.hero_tray_button = self._make_action_button(right_hero, self.tr("button_send_to_tray"), self.hide_window, "#0a3340", ACCENT_CYAN)
         self.hero_tray_button.pack(anchor="e", fill="x", pady=(0, 12))
-        self.hero_exit_button = self._make_action_button(right_hero, "EXIT APPLICATION", self.exit_application, "#31151a", ACCENT_RED)
+        self.hero_exit_button = self._make_action_button(right_hero, self.tr("button_exit_application"), self.exit_application, "#31151a", ACCENT_RED)
         self.hero_exit_button.pack(anchor="e", fill="x", pady=(0, 12))
         self.health_stack = tk.Frame(right_hero, bg=PANEL_ALT_COLOR)
         self.health_stack.pack(anchor="e", fill="x")
@@ -573,7 +878,7 @@ class BucklespringApp:
         controls_body = controls["body"]
         self.toggle_button = tk.Button(
             controls_body,
-            text="DEACTIVATE ENGINE",
+            text=self.tr("toggle_deactivate"),
             command=self.toggle_enabled,
             bg="#114955",
             fg=TEXT_PRIMARY,
@@ -614,29 +919,31 @@ class BucklespringApp:
 
         command_row = tk.Frame(controls_body, bg=PANEL_COLOR)
         command_row.pack(fill="x")
-        self.hide_button = self._make_action_button(command_row, "MINIMIZE TO TRAY", self.hide_window, "#0a3340", ACCENT_CYAN)
+        self.hide_button = self._make_action_button(command_row, self.tr("button_minimize_to_tray"), self.hide_window, "#0a3340", ACCENT_CYAN)
         self.hide_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
-        self.exit_button = self._make_action_button(command_row, "EXIT SESSION", self.exit_application, "#31151a", ACCENT_RED)
+        self.exit_button = self._make_action_button(command_row, self.tr("button_exit_session"), self.exit_application, "#31151a", ACCENT_RED)
         self.exit_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
         hotkey_panel = tk.Frame(controls_body, bg=PANEL_COLOR)
         hotkey_panel.pack(fill="x", pady=(18, 0))
-        tk.Label(
+        self.command_keys_label = tk.Label(
             hotkey_panel,
-            text="COMMAND KEYS",
+            text=self.tr("section_command_keys"),
             bg=PANEL_COLOR,
             fg=ACCENT_CYAN,
             font=("Bahnschrift SemiBold", 11, "bold"),
             anchor="w",
-        ).pack(anchor="w")
-        tk.Label(
+        )
+        self.command_keys_label.pack(anchor="w")
+        self.config_path_label = tk.Label(
             hotkey_panel,
-            text=f"Persistent profile saved in {resolve_config_path().name}",
+            text=self.tr("config_saved_in", config_name=resolve_config_path().name),
             bg=PANEL_COLOR,
             fg=TEXT_MUTED,
             font=("Consolas", 9),
             anchor="w",
-        ).pack(anchor="w", pady=(3, 10))
+        )
+        self.config_path_label.pack(anchor="w", pady=(3, 10))
 
         hotkey_grid = tk.Frame(hotkey_panel, bg=PANEL_COLOR)
         hotkey_grid.pack(fill="x")
@@ -646,14 +953,16 @@ class BucklespringApp:
 
         self.hotkey_entries: dict[str, tk.Entry] = {}
         for row, (action, label, description, _default) in enumerate(HOTKEY_FIELDS):
-            tk.Label(
+            label_widget = tk.Label(
                 hotkey_grid,
-                text=label,
+                text=self.hotkey_label(action),
                 bg=PANEL_COLOR,
                 fg=TEXT_PRIMARY,
                 font=("Bahnschrift SemiBold", 10, "bold"),
                 anchor="w",
-            ).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
+            )
+            label_widget.grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
+            self.hotkey_label_widgets[action] = label_widget
             entry = tk.Entry(
                 hotkey_grid,
                 textvariable=self.hotkey_entry_vars[action],
@@ -667,22 +976,24 @@ class BucklespringApp:
             )
             entry.grid(row=row, column=1, sticky="ew", pady=5)
             self.hotkey_entries[action] = entry
-            tk.Label(
+            description_widget = tk.Label(
                 hotkey_grid,
-                text=description,
+                text=self.hotkey_description(action),
                 bg=PANEL_COLOR,
                 fg=TEXT_MUTED,
                 font=("Consolas", 8),
                 anchor="w",
                 justify="left",
                 wraplength=150,
-            ).grid(row=row, column=2, sticky="w", padx=(10, 0), pady=5)
+            )
+            description_widget.grid(row=row, column=2, sticky="w", padx=(10, 0), pady=5)
+            self.hotkey_description_widgets[action] = description_widget
 
         hotkey_actions = tk.Frame(hotkey_panel, bg=PANEL_COLOR)
         hotkey_actions.pack(fill="x", pady=(12, 0))
-        self.hotkey_apply_button = self._make_action_button(hotkey_actions, "APPLY HOTKEYS", self.apply_hotkeys_from_gui, "#12362f", ACCENT_GREEN)
+        self.hotkey_apply_button = self._make_action_button(hotkey_actions, self.tr("button_apply_hotkeys"), self.apply_hotkeys_from_gui, "#12362f", ACCENT_GREEN)
         self.hotkey_apply_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
-        self.hotkey_reset_button = self._make_action_button(hotkey_actions, "RESET DEFAULTS", self.reset_hotkeys_to_defaults, "#2e2413", ACCENT_ORANGE)
+        self.hotkey_reset_button = self._make_action_button(hotkey_actions, self.tr("button_reset_defaults"), self.reset_hotkeys_to_defaults, "#2e2413", ACCENT_ORANGE)
         self.hotkey_reset_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
         self.hotkey_feedback_label = tk.Label(
             hotkey_panel,
@@ -698,9 +1009,9 @@ class BucklespringApp:
 
         lab_actions = tk.Frame(hotkey_panel, bg=PANEL_COLOR)
         lab_actions.pack(fill="x", pady=(12, 0))
-        self.fn_lab_button = self._make_action_button(lab_actions, "FN CAPTURE LAB", self.open_fn_capture_window, "#12303c", ACCENT_CYAN)
+        self.fn_lab_button = self._make_action_button(lab_actions, self.tr("button_fn_lab"), self.open_fn_capture_window, "#12303c", ACCENT_CYAN)
         self.fn_lab_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
-        self.about_button = self._make_action_button(lab_actions, "ABOUT", self.show_about_dialog, "#14242c", TEXT_PRIMARY)
+        self.about_button = self._make_action_button(lab_actions, self.tr("button_about"), self.show_about_dialog, "#14242c", TEXT_PRIMARY)
         self.about_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
         output_body = output["body"]
@@ -734,19 +1045,20 @@ class BucklespringApp:
             anchor="w",
         )
         self.volume_display.pack(fill="x")
-        tk.Label(
+        self.output_hint_label = tk.Label(
             output_status,
-            text="Dial the ring or click the bars to set live output with exact persistence.",
+            text=self.tr("output_hint"),
             bg=PANEL_COLOR,
             fg=TEXT_MUTED,
             font=("Segoe UI", 10),
             anchor="w",
             justify="left",
             wraplength=280,
-        ).pack(fill="x", pady=(6, 12))
+        )
+        self.output_hint_label.pack(fill="x", pady=(6, 12))
         self.output_state_label = tk.Label(
             output_status,
-            text="TRAY MIRROR ACTIVE",
+            text=self.tr("output_state_active"),
             bg="#0b3038",
             fg=ACCENT_CYAN,
             font=("Consolas", 10, "bold"),
@@ -782,31 +1094,36 @@ class BucklespringApp:
 
         output_controls = tk.Frame(output_body, bg=PANEL_COLOR)
         output_controls.pack(fill="x")
-        self.decrease_button = self._make_action_button(output_controls, "- 5%", lambda: self._set_volume_and_refresh(self.engine.adjust_volume(-VOLUME_STEP)), "#102832", ACCENT_CYAN)
+        self.decrease_button = self._make_action_button(output_controls, self.tr("button_decrease_volume"), lambda: self._set_volume_and_refresh(self.engine.adjust_volume(-VOLUME_STEP)), "#102832", ACCENT_CYAN)
         self.decrease_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
-        self.increase_button = self._make_action_button(output_controls, "+ 5%", lambda: self._set_volume_and_refresh(self.engine.adjust_volume(VOLUME_STEP)), "#12362f", ACCENT_GREEN)
+        self.increase_button = self._make_action_button(output_controls, self.tr("button_increase_volume"), lambda: self._set_volume_and_refresh(self.engine.adjust_volume(VOLUME_STEP)), "#12362f", ACCENT_GREEN)
         self.increase_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
     def _build_menu(self) -> None:
         self.menu_bar = tk.Menu(self.root)
 
         self.file_menu = tk.Menu(self.menu_bar, tearoff=False)
-        self.file_menu.add_command(label="Enviar al tray", underline=10, command=self.hide_window, accelerator="")
-        self.file_menu.add_command(label="Mostrar ventana", underline=0, command=self.show_window, accelerator="")
+        self.file_menu.add_command(label=self.tr("menu_file_send_to_tray"), command=self.hide_window, accelerator="")
+        self.file_menu.add_command(label=self.tr("menu_file_show_window"), command=self.show_window, accelerator="")
         self.file_menu.add_separator()
-        self.file_menu.add_command(label="Salir", underline=0, command=self.exit_application, accelerator="")
-        self.menu_bar.add_cascade(label="Archivo", menu=self.file_menu, underline=0)
+        self.file_menu.add_command(label=self.tr("menu_file_exit"), command=self.exit_application, accelerator="")
+        self.menu_bar.add_cascade(label=self.tr("menu_file"), menu=self.file_menu)
 
         self.settings_menu = tk.Menu(self.menu_bar, tearoff=False)
-        self.settings_menu.add_command(label="Aplicar atajos", underline=0, command=self.apply_hotkeys_from_gui, accelerator="Ctrl+Enter")
-        self.settings_menu.add_command(label="Restaurar atajos", underline=0, command=self.reset_hotkeys_to_defaults, accelerator="Ctrl+Shift+R")
+        self.settings_menu.add_command(label=self.tr("menu_settings_apply_hotkeys"), command=self.apply_hotkeys_from_gui, accelerator="Ctrl+Enter")
+        self.settings_menu.add_command(label=self.tr("menu_settings_reset_hotkeys"), command=self.reset_hotkeys_to_defaults, accelerator="Ctrl+Shift+R")
         self.settings_menu.add_separator()
-        self.settings_menu.add_command(label="Laboratorio Fn", underline=0, command=self.open_fn_capture_window, accelerator="Ctrl+Shift+F")
-        self.menu_bar.add_cascade(label="Configuracion", menu=self.settings_menu, underline=0)
+        self.settings_menu.add_command(label=self.tr("menu_settings_fn_lab"), command=self.open_fn_capture_window, accelerator="Ctrl+Shift+F")
+        self.menu_bar.add_cascade(label=self.tr("menu_settings"), menu=self.settings_menu)
+
+        self.language_menu = tk.Menu(self.menu_bar, tearoff=False)
+        self.language_menu.add_radiobutton(label=self.tr("language_option_en"), variable=self.language_var, value="en", command=lambda: self.change_language("en"))
+        self.language_menu.add_radiobutton(label=self.tr("language_option_es"), variable=self.language_var, value="es", command=lambda: self.change_language("es"))
+        self.menu_bar.add_cascade(label=self.tr("menu_language"), menu=self.language_menu)
 
         self.help_menu = tk.Menu(self.menu_bar, tearoff=False)
-        self.help_menu.add_command(label="About", underline=0, command=self.show_about_dialog, accelerator="F1")
-        self.menu_bar.add_cascade(label="Ayuda", menu=self.help_menu, underline=1)
+        self.help_menu.add_command(label=self.tr("menu_help_about", version=APP_VERSION), command=self.show_about_dialog, accelerator="F1")
+        self.menu_bar.add_cascade(label=self.tr("menu_help"), menu=self.help_menu)
 
         self.root.configure(menu=self.menu_bar)
         self._update_menu_labels()
@@ -818,14 +1135,30 @@ class BucklespringApp:
         self.root.bind_all("<Control-Shift-F>", self._on_fn_capture_shortcut)
         self.root.bind_all("<Control-Shift-W>", self._on_show_window_shortcut)
 
+    def change_language(self, language: str) -> None:
+        normalized = normalize_language(language)
+        self.language_var.set(normalized)
+        if normalized != self.engine.language:
+            self.engine.set_language(normalized)
+        self._build_menu()
+        self._apply_localized_text()
+        self.refresh_ui()
+
     def _update_menu_labels(self) -> None:
         if not hasattr(self, "file_menu"):
             return
 
-        self.file_menu.entryconfigure(0, accelerator=format_hotkey(self.engine.hotkeys["hide_window"]))
-        self.file_menu.entryconfigure(1, accelerator="Ctrl + Shift + W")
-        self.file_menu.entryconfigure(3, accelerator=format_hotkey(self.engine.hotkeys["exit_application"]))
-        self.help_menu.entryconfigure(0, label=f"About {APP_VERSION}")
+        self.file_menu.entryconfigure(0, label=self.tr("menu_file_send_to_tray"), accelerator=format_hotkey(self.engine.hotkeys["hide_window"]))
+        self.file_menu.entryconfigure(1, label=self.tr("menu_file_show_window"), accelerator="Ctrl + Shift + W")
+        self.file_menu.entryconfigure(3, label=self.tr("menu_file_exit"), accelerator=format_hotkey(self.engine.hotkeys["exit_application"]))
+
+        self.settings_menu.entryconfigure(0, label=self.tr("menu_settings_apply_hotkeys"), accelerator="Ctrl + Enter")
+        self.settings_menu.entryconfigure(1, label=self.tr("menu_settings_reset_hotkeys"), accelerator="Ctrl + Shift + R")
+        self.settings_menu.entryconfigure(3, label=self.tr("menu_settings_fn_lab"), accelerator="Ctrl + Shift + F")
+
+        self.language_menu.entryconfigure(0, label=self.tr("language_option_en"))
+        self.language_menu.entryconfigure(1, label=self.tr("language_option_es"))
+        self.help_menu.entryconfigure(0, label=self.tr("menu_help_about", version=APP_VERSION), accelerator="F1")
 
 
     def _create_panel(
@@ -834,8 +1167,8 @@ class BucklespringApp:
         *,
         row: int,
         column: int,
-        title: str,
-        subtitle: str,
+        title_key: str,
+        subtitle_key: str,
         columnspan: int = 1,
     ) -> dict[str, tk.Frame]:
         panel = tk.Frame(
@@ -856,26 +1189,35 @@ class BucklespringApp:
 
         header = tk.Frame(panel, bg=PANEL_COLOR)
         header.pack(fill="x", pady=(0, 14))
-        tk.Label(
+        title_label = tk.Label(
             header,
-            text=title,
+            text=self.tr(title_key),
             bg=PANEL_COLOR,
             fg=ACCENT_CYAN,
             font=("Bahnschrift SemiBold", 10, "bold"),
             anchor="w",
-        ).pack(side="left")
-        tk.Label(
+        )
+        title_label.pack(side="left")
+        subtitle_label = tk.Label(
             header,
-            text=subtitle,
+            text=self.tr(subtitle_key),
             bg=PANEL_COLOR,
             fg=TEXT_MUTED,
             font=("Consolas", 9),
             anchor="e",
-        ).pack(side="right")
+        )
+        subtitle_label.pack(side="right")
 
         body = tk.Frame(panel, bg=PANEL_COLOR)
         body.pack(fill="both", expand=True)
-        return {"panel": panel, "body": body}
+        return {
+            "panel": panel,
+            "body": body,
+            "title_label": title_label,
+            "subtitle_label": subtitle_label,
+            "title_key": title_key,
+            "subtitle_key": subtitle_key,
+        }
 
     def _make_action_button(self, parent: tk.Misc, text: str, command: object, bg: str, fg: str) -> tk.Button:
         button = tk.Button(
@@ -910,9 +1252,9 @@ class BucklespringApp:
         for action, _label, _description, _default in HOTKEY_FIELDS:
             hotkey = normalize_hotkey(hotkeys.get(action))
             if hotkey is None:
-                raise ValueError(f"El atajo para {HOTKEY_LABELS[action]} no puede quedar vacio.")
+                raise ValueError(self.tr("hotkey_empty", label=self.hotkey_label(action)))
             if hotkey in seen:
-                raise ValueError(f"El atajo {format_hotkey(hotkey)} esta repetido.")
+                raise ValueError(self.tr("hotkey_duplicate", hotkey=format_hotkey(hotkey)))
             keyboard.parse_hotkey(hotkey)
             keyboard.add_hotkey(hotkey, self.hotkey_callbacks[action])
             seen.add(hotkey)
@@ -951,15 +1293,20 @@ class BucklespringApp:
 
         self.fn_capture_samples += 1
         scan_code = "--" if snapshot.scan_code is None else str(snapshot.scan_code)
-        key_name = snapshot.name or "(sin nombre)"
-        line = f"[{self.fn_capture_samples:03d}] type={snapshot.event_type:<5} scan={scan_code:<4} name={key_name}\n"
+        key_name = snapshot.name or self.tr("fn_missing_name")
+        line = (
+            f"[{self.fn_capture_samples:03d}] "
+            f"{self.tr('diag_field_type')}={snapshot.event_type:<5} "
+            f"{self.tr('diag_field_scan')}={scan_code:<4} "
+            f"{self.tr('diag_field_name')}={key_name}\n"
+        )
         self.fn_capture_text.insert("end", line)
         self.fn_capture_text.see("end")
 
         if normalize_name(snapshot.name) in {"fn", "function", "fn lock", "function lock"}:
-            self.fn_capture_status_var.set("Fn fue detectada por Windows. Ya podemos mapearla con el evento real mostrado arriba.")
+            self._set_fn_capture_status("fn_capture_status_detected")
         else:
-            self.fn_capture_status_var.set("Presiona Fn. Si no aparece ninguna fila nueva, el firmware del teclado la esta consumiendo.")
+            self._set_fn_capture_status("fn_capture_status_hidden")
 
     def open_fn_capture_window(self) -> None:
         if self.fn_capture_window is not None and self.fn_capture_window.winfo_exists():
@@ -969,7 +1316,7 @@ class BucklespringApp:
             return
 
         window = tk.Toplevel(self.root)
-        window.title(f"{APP_NAME} {APP_VERSION} - Fn Capture Lab")
+        window.title(self.tr("fn_capture_window_title", app_name=APP_NAME, version=APP_VERSION))
         window.configure(bg=BACKGROUND_LAYER_TOP)
         window.geometry("760x420")
         window.minsize(680, 360)
@@ -982,24 +1329,26 @@ class BucklespringApp:
         shell = tk.Frame(window, bg=PANEL_COLOR, padx=18, pady=16, highlightbackground=GRID_LINE, highlightthickness=1)
         shell.pack(fill="both", expand=True, padx=20, pady=20)
 
-        tk.Label(
+        self.fn_capture_heading_label = tk.Label(
             shell,
-            text="FN CAPTURE LAB",
+            text=self.tr("fn_capture_heading"),
             bg=PANEL_COLOR,
             fg=ACCENT_CYAN,
             font=("Bahnschrift SemiBold", 15, "bold"),
             anchor="w",
-        ).pack(anchor="w")
-        tk.Label(
+        )
+        self.fn_capture_heading_label.pack(anchor="w")
+        self.fn_capture_description_label = tk.Label(
             shell,
-            text="Presiona Fn, Fn+otra tecla o cualquier tecla especial. Si Windows reporta el evento, quedara registrado aqui con nombre y scan code.",
+            text=self.tr("fn_capture_description"),
             bg=PANEL_COLOR,
             fg=TEXT_MUTED,
             font=("Segoe UI", 10),
             justify="left",
             wraplength=680,
             anchor="w",
-        ).pack(fill="x", pady=(6, 10))
+        )
+        self.fn_capture_description_label.pack(fill="x", pady=(6, 10))
 
         status = tk.Label(
             shell,
@@ -1028,29 +1377,47 @@ class BucklespringApp:
 
         action_row = tk.Frame(shell, bg=PANEL_COLOR)
         action_row.pack(fill="x", pady=(12, 0))
-        self._make_action_button(action_row, "CLEAR LOG", self.clear_fn_capture_log, "#102832", ACCENT_CYAN).pack(side="left", expand=True, fill="x", padx=(0, 6))
-        self._make_action_button(action_row, "COPY LOG", self.copy_fn_capture_log, "#12362f", ACCENT_GREEN).pack(side="left", expand=True, fill="x", padx=6)
-        self._make_action_button(action_row, "CLOSE", self.close_fn_capture_window, "#31151a", ACCENT_RED).pack(side="left", expand=True, fill="x", padx=(6, 0))
+        self.fn_capture_clear_button = self._make_action_button(action_row, self.tr("fn_capture_clear"), self.clear_fn_capture_log, "#102832", ACCENT_CYAN)
+        self.fn_capture_clear_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        self.fn_capture_copy_button = self._make_action_button(action_row, self.tr("fn_capture_copy"), self.copy_fn_capture_log, "#12362f", ACCENT_GREEN)
+        self.fn_capture_copy_button.pack(side="left", expand=True, fill="x", padx=6)
+        self.fn_capture_close_button = self._make_action_button(action_row, self.tr("fn_capture_close"), self.close_fn_capture_window, "#31151a", ACCENT_RED)
+        self.fn_capture_close_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
-        self.fn_capture_status_var.set("Presiona Fn. Si no aparece ningun evento, el teclado no la expone a Windows.")
+        self._set_fn_capture_status("fn_capture_status_no_event")
         self.clear_fn_capture_log()
+
+    def _refresh_fn_capture_window_texts(self) -> None:
+        if self.fn_capture_window is None or not self.fn_capture_window.winfo_exists():
+            return
+        self.fn_capture_window.title(self.tr("fn_capture_window_title", app_name=APP_NAME, version=APP_VERSION))
+        if self.fn_capture_heading_label is not None:
+            self.fn_capture_heading_label.configure(text=self.tr("fn_capture_heading"))
+        if self.fn_capture_description_label is not None:
+            self.fn_capture_description_label.configure(text=self.tr("fn_capture_description"))
+        if self.fn_capture_clear_button is not None:
+            self.fn_capture_clear_button.configure(text=self.tr("fn_capture_clear"))
+        if self.fn_capture_copy_button is not None:
+            self.fn_capture_copy_button.configure(text=self.tr("fn_capture_copy"))
+        if self.fn_capture_close_button is not None:
+            self.fn_capture_close_button.configure(text=self.tr("fn_capture_close"))
 
     def clear_fn_capture_log(self) -> None:
         self.fn_capture_samples = 0
         if self.fn_capture_text is not None:
             self.fn_capture_text.delete("1.0", "end")
-        self.fn_capture_status_var.set("Presiona Fn. Si no aparece ningun evento, el teclado no la expone a Windows.")
+        self._set_fn_capture_status("fn_capture_status_no_event")
 
     def copy_fn_capture_log(self) -> None:
         if self.fn_capture_text is None:
             return
         content = self.fn_capture_text.get("1.0", "end").strip()
         if not content:
-            self.fn_capture_status_var.set("Todavia no hay eventos para copiar.")
+            self._set_fn_capture_status("fn_capture_status_no_entries")
             return
         self.root.clipboard_clear()
         self.root.clipboard_append(content)
-        self.fn_capture_status_var.set("Log de captura copiado al portapapeles.")
+        self._set_fn_capture_status("fn_capture_status_copied")
 
     def close_fn_capture_window(self) -> None:
         if self.fn_capture_window is not None:
@@ -1060,15 +1427,22 @@ class BucklespringApp:
                 pass
         self.fn_capture_window = None
         self.fn_capture_text = None
+        self.fn_capture_heading_label = None
+        self.fn_capture_description_label = None
+        self.fn_capture_clear_button = None
+        self.fn_capture_copy_button = None
+        self.fn_capture_close_button = None
 
     def show_about_dialog(self) -> None:
         messagebox.showinfo(
-            title=f"About {APP_NAME}",
-            message=(
-                f"{APP_NAME} {APP_VERSION}\n"
-                f"Autor: {APP_AUTHOR}\n"
-                f"Licencia: {APP_LICENSE}\n"
-                f"Copyright (c) {date.today().year} {APP_AUTHOR}"
+            title=self.tr("about_title", app_name=APP_NAME),
+            message=self.tr(
+                "about_message",
+                app_name=APP_NAME,
+                version=APP_VERSION,
+                author=APP_AUTHOR,
+                license=APP_LICENSE,
+                year=date.today().year,
             ),
             parent=self.root,
         )
@@ -1187,11 +1561,11 @@ class BucklespringApp:
         height = max(canvas.winfo_height(), 178)
         canvas.delete("all")
 
-        canvas.create_text(18, 16, text="AMPLITUDE BUS", anchor="w", fill=TEXT_MUTED, font=("Consolas", 10))
+        canvas.create_text(18, 16, text=self.tr("volume_meter_title"), anchor="w", fill=TEXT_MUTED, font=("Consolas", 10))
         canvas.create_text(
             width - 18,
             16,
-            text="ACTIVE" if self.engine.enabled else "MUTED",
+            text=self.tr("status_word_active") if self.engine.enabled else self.tr("status_word_muted"),
             anchor="e",
             fill=ACCENT_GREEN if self.engine.enabled else ACCENT_ORANGE,
             font=("Consolas", 10, "bold"),
@@ -1231,7 +1605,7 @@ class BucklespringApp:
             canvas.create_line(tick_x, bottom + 10, tick_x, bottom + 18, fill=GRID_LINE, width=1)
 
         canvas.create_text(left, height - 18, text="00%", anchor="w", fill=TEXT_MUTED, font=("Consolas", 9))
-        canvas.create_text(width / 2, height - 18, text="VECTOR OUTPUT", anchor="center", fill=TEXT_MUTED, font=("Consolas", 9))
+        canvas.create_text(width / 2, height - 18, text=self.tr("volume_meter_footer"), anchor="center", fill=TEXT_MUTED, font=("Consolas", 9))
         canvas.create_text(right, height - 18, text="100%", anchor="e", fill=TEXT_MUTED, font=("Consolas", 9))
 
     def _draw_volume_dial(self) -> None:
@@ -1285,8 +1659,8 @@ class BucklespringApp:
         canvas.create_oval(knob_x - 9, knob_y - 9, knob_x + 9, knob_y + 9, fill=knob_fill, outline="#021014", width=2)
         canvas.create_oval(cx - 54, cy - 54, cx + 54, cy + 54, fill="#07141a", outline="#11303b", width=2)
         canvas.create_text(cx, cy - 14, text=f"{int(round(self.engine.volume * 100)):03d}%", fill=TEXT_PRIMARY, font=("Bahnschrift SemiBold", 28, "bold"))
-        canvas.create_text(cx, cy + 16, text="OUTPUT DIAL", fill=TEXT_MUTED, font=("Consolas", 10))
-        canvas.create_text(cx, cy + 36, text="ACTIVE" if self.engine.enabled else "MUTED", fill=knob_fill, font=("Consolas", 10, "bold"))
+        canvas.create_text(cx, cy + 16, text=self.tr("output_dial_title"), fill=TEXT_MUTED, font=("Consolas", 10))
+        canvas.create_text(cx, cy + 36, text=self.tr("status_word_active") if self.engine.enabled else self.tr("status_word_muted"), fill=knob_fill, font=("Consolas", 10, "bold"))
         canvas.create_text(24, height - 20, text="0", fill=TEXT_MUTED, font=("Consolas", 9), anchor="w")
         canvas.create_text(width - 24, height - 20, text="100", fill=TEXT_MUTED, font=("Consolas", 9), anchor="e")
 
@@ -1318,49 +1692,49 @@ class BucklespringApp:
         self._set_volume_and_refresh(self.engine.set_volume(MIN_VOLUME + ratio * (MAX_VOLUME - MIN_VOLUME)))
 
     def refresh_ui(self) -> None:
-        status = "ACTIVO" if self.engine.enabled else "SILENCIADO"
-        mixer_state = "audio bus online" if self.engine.mixer_ready else "audio bus unavailable"
-        self.status_var.set(f"Engine status: {status}\nMixer: {mixer_state}\nConfig: {resolve_config_path().name}")
-        self.substatus_var.set(f"resident keyboard hook / tray armed / non-blocking audio path")
-        self.version_var.set(f"VERSION {APP_VERSION}")
+        status = self.tr("status_word_active") if self.engine.enabled else self.tr("status_word_muted")
+        mixer_state = self.tr("mixer_online") if self.engine.mixer_ready else self.tr("mixer_unavailable")
+        self.status_var.set(self.tr("status_summary", status=status, mixer=mixer_state, config_name=resolve_config_path().name))
+        self.substatus_var.set(self.tr("substatus_summary"))
+        self.version_var.set(self.tr("version_chip", version=APP_VERSION))
+        self.signature_var.set(self.tr("build_signature"))
         self.toggle_button.configure(
-            text="DEACTIVATE ENGINE" if self.engine.enabled else "REACTIVATE ENGINE",
+            text=self.tr("toggle_deactivate") if self.engine.enabled else self.tr("toggle_reactivate"),
             bg="#114955" if self.engine.enabled else "#4f3017",
             activebackground="#15616e" if self.engine.enabled else "#ff9b54",
         )
         self.status_badge.configure(
-            text="ACTIVE" if self.engine.enabled else "MUTED",
+            text=self.tr("status_word_active") if self.engine.enabled else self.tr("status_word_muted"),
             bg=ACCENT_GREEN if self.engine.enabled else ACCENT_ORANGE,
             fg="#041015",
         )
         chip_specs = (
-            ("HOOK LIVE" if self.engine.enabled else "HOOK IDLE", ACCENT_GREEN if self.engine.enabled else ACCENT_ORANGE),
-            ("TRAY READY", ACCENT_CYAN),
-            ("ASYNC AUDIO", ACCENT_CYAN),
+            (self.tr("health_hook_live") if self.engine.enabled else self.tr("health_hook_idle"), ACCENT_GREEN if self.engine.enabled else ACCENT_ORANGE),
+            (self.tr("health_tray_ready"), ACCENT_CYAN),
+            (self.tr("health_async_audio"), ACCENT_CYAN),
         )
         for chip, (text, color) in zip(self.health_chips, chip_specs, strict=False):
             chip.configure(text=text, fg=color)
         volume_percent = int(round(self.engine.volume * 100))
         self.volume_var.set(volume_percent)
-        self.volume_label_var.set(f"OUTPUT LEVEL  {volume_percent:03d}%")
+        self.volume_label_var.set(self.tr("volume_output_level", volume=volume_percent))
         self.output_state_label.configure(
-            text="TRAY MIRROR ACTIVE" if self.engine.enabled else "AUDIO PATH MUTED",
+            text=self.tr("output_state_active") if self.engine.enabled else self.tr("output_state_muted"),
             fg=ACCENT_CYAN if self.engine.enabled else ACCENT_ORANGE,
         )
         summary = "  |  ".join(
-            f"{format_hotkey(self.engine.hotkeys[action])} {HOTKEY_LABELS[action]}"
+            f"{format_hotkey(self.engine.hotkeys[action])} {self.hotkey_label(action)}"
             for action, _label, _description, _default in HOTKEY_FIELDS
         )
-        self.hotkey_summary_var.set(f"Window close or minimize sends the app to tray.\n{summary}")
+        self.hotkey_summary_var.set(self.tr("window_tray_hint", summary=summary))
         self.output_hotkey_label.configure(
             text=(
-                f"TRAY  {format_hotkey(self.engine.hotkeys['hide_window'])}\n"
-                f"EXIT  {format_hotkey(self.engine.hotkeys['exit_application'])}"
+                f"{self.tr('output_tray_label')}  {format_hotkey(self.engine.hotkeys['hide_window'])}\n"
+                f"{self.tr('output_exit_label')}  {format_hotkey(self.engine.hotkeys['exit_application'])}"
             )
         )
-        if not self.hotkey_feedback_var.get():
-            self.hotkey_feedback_var.set(f"Hotkeys persisted in {resolve_config_path().name} and reloaded on startup.")
-        self.tray_icon.title = f"{TRAY_TITLE} - {'Activo' if self.engine.enabled else 'Silenciado'}"
+        self.hotkey_feedback_var.set(self.tr(self.hotkey_feedback_key, **self.hotkey_feedback_kwargs))
+        self.tray_icon.title = f"{TRAY_TITLE} - {self.tr('tray_title_active') if self.engine.enabled else self.tr('tray_title_muted')}"
         self.tray_icon.update_menu()
         self._update_menu_labels()
         self._draw_volume_dial()
@@ -1383,21 +1757,18 @@ class BucklespringApp:
         for action, _label, _description, _default in HOTKEY_FIELDS:
             normalized = normalize_hotkey(self.hotkey_entry_vars[action].get())
             if normalized is None:
-                self.hotkey_feedback_var.set(f"{HOTKEY_LABELS[action]} requiere un atajo valido.")
-                self.hotkey_feedback_label.configure(fg=ACCENT_RED)
+                self._set_hotkey_feedback("hotkey_requires_valid", color=ACCENT_RED, label=self.hotkey_label(action))
                 return
             candidate[action] = normalized
 
         try:
             self._apply_hotkeys(candidate, persist=True)
         except Exception as exc:
-            self.hotkey_feedback_var.set(f"No se pudieron aplicar los atajos: {exc}")
-            self.hotkey_feedback_label.configure(fg=ACCENT_RED)
+            self._set_hotkey_feedback("hotkeys_apply_error", color=ACCENT_RED, error=str(exc))
             self._sync_hotkey_entries()
             return
 
-        self.hotkey_feedback_var.set(f"Hotkeys applied and saved in {resolve_config_path().name}.")
-        self.hotkey_feedback_label.configure(fg=ACCENT_GREEN)
+        self._set_hotkey_feedback("hotkeys_applied", color=ACCENT_GREEN, config_name=resolve_config_path().name)
         self._sync_hotkey_entries()
         self.refresh_ui()
 
@@ -1405,12 +1776,10 @@ class BucklespringApp:
         try:
             self._apply_hotkeys(dict(DEFAULT_HOTKEYS), persist=True)
         except Exception as exc:
-            self.hotkey_feedback_var.set(f"No se pudieron restaurar los atajos por defecto: {exc}")
-            self.hotkey_feedback_label.configure(fg=ACCENT_RED)
+            self._set_hotkey_feedback("hotkeys_reset_error", color=ACCENT_RED, error=str(exc))
             return
 
-        self.hotkey_feedback_var.set("Default hotkeys restored.")
-        self.hotkey_feedback_label.configure(fg=ACCENT_GREEN)
+        self._set_hotkey_feedback("hotkeys_reset", color=ACCENT_GREEN)
         self._sync_hotkey_entries()
         self.refresh_ui()
 

@@ -4,7 +4,7 @@ Bucklespring reproduce sonidos mecánicos de teclado en Windows usando un hook g
 
 ## Versión actual
 
-`V1.4.1`
+`V1.5.0`
 
 El proyecto usa versionado `Vx.x.x` con criterio semántico:
 - `major`: cambios incompatibles.
@@ -15,9 +15,10 @@ El proyecto usa versionado `Vx.x.x` con criterio semántico:
 
 - GUI futurista estilo HUD para activar o desactivar el sonido sin abrir consola.
 - Barra de menús estilo Windows con `Archivo`, `Configuracion` y `Ayuda`.
+- Selector de idioma en la barra de menús con cambio en caliente entre ingles y espanol.
 - Icono en la bandeja del sistema, junto al reloj de Windows.
 - Dial de volumen interactivo dentro de la GUI.
-- Persistencia de volumen, estado y hotkeys en `config.json`.
+- Persistencia de volumen, estado, idioma y hotkeys en `config.json`.
 - About dialog con versión y autor.
 - Laboratorio `Fn Capture Lab` para inspeccionar eventos crudos de teclado.
 - Ruta de audio no bloqueante para evitar congelamientos de la GUI.
@@ -31,6 +32,7 @@ El proyecto usa versionado `Vx.x.x` con criterio semántico:
 
 ## Cambios recientes
 
+- `V1.5.0`: soporte multi-idioma para la GUI con cambio desde la barra de menús y persistencia del idioma seleccionado.
 - `V1.4.1`: corrección del workflow de release para que el tag y el GitHub Release se generen correctamente a partir de `main`.
 - `V1.4.0`: barra de menús con About, laboratorio de captura `Fn`, pipeline de audio no bloqueante y versión visible en más puntos de la GUI.
 - `V1.3.0`: dial interactivo, hotkeys configurables con `config.json`, salida segura al tray y rango de volumen 0-100%.

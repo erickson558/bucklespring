@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.5.0 - 2026-03-24
+
+- Added GUI multi-language support with English and Spanish translations for the main window, tray menu, About dialog and Fn Capture Lab.
+- Added a language selector to the menu bar and persisted the chosen locale in `config.json` so the app restores it on startup.
+- Prepared the release workflow for GitHub's Node 24 runtime while keeping automatic build, tag and release creation on `main`.
+
 ## V1.4.1 - 2026-03-24
 
 - Fixed the GitHub Actions workflow parsing so releases can be built and published from `main` without startup failure.
