@@ -1,5 +1,12 @@
 # Changelog
 
+## V1.5.1 - 2026-03-25
+
+- Hardened the audio worker so a missing or corrupted WAV no longer kills resident playback for the whole session.
+- Ignored orphaned key-release events in the sound queue to prevent phantom release clicks when Windows reports `up` without a tracked `down`.
+- Added safe configuration persistence fallback to `%LOCALAPPDATA%\\Bucklespring\\config.json` when the app directory is read-only.
+- Added regression tests for config fallback loading/saving, worker resilience and stray release filtering.
+
 ## V1.5.0 - 2026-03-24
 
 - Added GUI multi-language support with English and Spanish translations for the main window, tray menu, About dialog and Fn Capture Lab.

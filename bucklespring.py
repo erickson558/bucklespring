@@ -320,6 +320,24 @@ def resolve_config_path() -> Path:
     return app_root() / CONFIG_FILE_NAME
 
 
+def fallback_config_path() -> Path:
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    base_dir = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+    return base_dir / APP_NAME / CONFIG_FILE_NAME
+
+
+def iter_config_paths(*preferred_paths: Path) -> tuple[Path, ...]:
+    candidates: list[Path] = []
+    seen: set[str] = set()
+    for path in (*preferred_paths, resolve_config_path(), fallback_config_path(), LEGACY_CONFIG_FILE):
+        key = os.path.normcase(str(path.resolve(strict=False)))
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(path)
+    return tuple(candidates)
+
+
 def resolve_audio_dir() -> Path:
     external = app_root() / "audios"
     bundled = bundle_root() / "audios"
@@ -405,6 +423,7 @@ class SingleInstanceGuard:
 class SoundEngine:
     def __init__(self) -> None:
         self.audio_dir = resolve_audio_dir()
+        self.config_path = resolve_config_path()
         self.volume = DEFAULT_VOLUME
         self.enabled = True
         self.language = DEFAULT_LANGUAGE
@@ -412,11 +431,14 @@ class SoundEngine:
         self.pressed_keys: set[tuple[int | None, str, str]] = set()
         self.sound_files = self._discover_sound_files()
         self.sound_cache: dict[Path, pygame.mixer.Sound] = {}
+        self.failed_sound_paths: set[Path] = set()
         self.cache_lock = threading.Lock()
         self.audio_queue: queue.Queue[KeyEventSnapshot | None] = queue.Queue()
         self.event_observers: list[Callable[[KeyEventSnapshot], None]] = []
         self.worker_stop = threading.Event()
         self.mixer_ready = False
+        self.last_audio_error: str | None = None
+        self.last_config_error: str | None = None
         self._setup_mixer()
         self.load_settings()
         self.audio_worker = threading.Thread(target=self._audio_worker_loop, name="bucklespring-audio", daemon=True)
@@ -446,20 +468,49 @@ class SoundEngine:
             sound_files.setdefault(stem.lower(), {})["press" if suffix == "0" else "release"] = path
         return sound_files
 
-    def _load_sound(self, path: Path) -> pygame.mixer.Sound:
+    def _load_sound(self, path: Path) -> pygame.mixer.Sound | None:
         with self.cache_lock:
+            if path in self.failed_sound_paths:
+                return None
             sound = self.sound_cache.get(path)
             if sound is None:
-                sound = pygame.mixer.Sound(str(path))
+                try:
+                    sound = pygame.mixer.Sound(str(path))
+                except Exception as exc:
+                    self.failed_sound_paths.add(path)
+                    self.last_audio_error = f"{path.name}: {exc}"
+                    return None
                 self.sound_cache[path] = sound
             return sound
+
+    def _play_sound_path(self, path: Path) -> bool:
+        sound = self._load_sound(path)
+        if sound is None:
+            return False
+
+        try:
+            sound.set_volume(self.volume)
+            sound.play()
+        except Exception as exc:
+            with self.cache_lock:
+                self.sound_cache.pop(path, None)
+                self.failed_sound_paths.add(path)
+            self.last_audio_error = f"{path.name}: {exc}"
+            return False
+
+        self.last_audio_error = None
+        return True
 
     def _audio_worker_loop(self) -> None:
         while not self.worker_stop.is_set():
             snapshot = self.audio_queue.get()
             if snapshot is None:
                 break
-            self.play_for_event(snapshot)
+            try:
+                # Keep the resident worker alive even if a single asset is missing or corrupted.
+                self.play_for_event(snapshot)
+            except Exception as exc:
+                self.last_audio_error = str(exc)
 
     def add_event_observer(self, callback: Callable[[KeyEventSnapshot], None]) -> None:
         self.event_observers.append(callback)
@@ -511,26 +562,29 @@ class SoundEngine:
             return
 
         sound_type = "press" if event.event_type == "down" else "release"
-        sound_path = self.sound_files.get(stem, {}).get(sound_type)
-        if sound_path is None and stem != UNKNOWN_STEM:
-            sound_path = self.sound_files.get(UNKNOWN_STEM, {}).get(sound_type)
-        if sound_path is None:
-            return
+        primary_path = self.sound_files.get(stem, {}).get(sound_type)
+        fallback_path = self.sound_files.get(UNKNOWN_STEM, {}).get(sound_type)
+        candidate_paths = [path for path in (primary_path, fallback_path) if path is not None]
 
-        sound = self._load_sound(sound_path)
-        sound.set_volume(self.volume)
-        sound.play()
+        for sound_path in dict.fromkeys(candidate_paths):
+            if self._play_sound_path(sound_path):
+                return
 
     def load_settings(self) -> None:
         data: dict[str, object] = {}
-        for path in (resolve_config_path(), LEGACY_CONFIG_FILE):
+        loaded_path: Path | None = None
+        for path in iter_config_paths(self.config_path):
             if not path.exists():
                 continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
+                loaded_path = path
                 break
             except (OSError, json.JSONDecodeError, TypeError, ValueError):
                 continue
+
+        if loaded_path is not None:
+            self.config_path = loaded_path
 
         try:
             self.volume = clamp(float(data.get("volume", self.volume)))
@@ -551,8 +605,7 @@ class SoundEngine:
                     merged[action] = normalized
             self.hotkeys = merged
 
-    def save_settings(self) -> None:
-        config_path = resolve_config_path()
+    def save_settings(self) -> Path | None:
         payload = {
             "volume": round(self.volume, 2),
             "enabled": self.enabled,
@@ -560,8 +613,23 @@ class SoundEngine:
             "hotkeys": self.hotkeys,
             "version": APP_VERSION,
         }
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        serialized = json.dumps(payload, indent=2)
+        errors: list[str] = []
+
+        for config_path in iter_config_paths(self.config_path):
+            try:
+                config_path.parent.mkdir(parents=True, exist_ok=True)
+                config_path.write_text(serialized, encoding="utf-8")
+            except OSError as exc:
+                errors.append(f"{config_path}: {exc}")
+                continue
+
+            self.config_path = config_path
+            self.last_config_error = None
+            return config_path
+
+        self.last_config_error = "; ".join(errors) if errors else "Unable to persist settings."
+        return None
 
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = bool(enabled)
@@ -589,19 +657,23 @@ class SoundEngine:
         self.save_settings()
 
     def handle_key_event(self, event: keyboard.KeyboardEvent) -> None:
-        event_key = (getattr(event, "scan_code", None), normalize_name(event.name), event.event_type)
-        opposite_key = (getattr(event, "scan_code", None), normalize_name(event.name), "down")
+        pressed_key = (getattr(event, "scan_code", None), normalize_name(event.name), "down")
+        should_enqueue_audio = False
 
         if event.event_type == "down":
-            if opposite_key in self.pressed_keys:
+            if pressed_key in self.pressed_keys:
                 return
-            self.pressed_keys.add(event_key)
-        else:
-            self.pressed_keys.discard(opposite_key)
+            self.pressed_keys.add(pressed_key)
+            should_enqueue_audio = True
+        elif event.event_type == "up":
+            # Ignore orphaned releases for audio so startup and focus changes do not create phantom clicks.
+            should_enqueue_audio = pressed_key in self.pressed_keys
+            self.pressed_keys.discard(pressed_key)
 
         snapshot = self._snapshot_from_event(event)
         self._emit_event(snapshot)
-        self.audio_queue.put(snapshot)
+        if should_enqueue_audio:
+            self.audio_queue.put(snapshot)
 
     def shutdown(self) -> None:
         keyboard.unhook_all()
@@ -639,7 +711,7 @@ class BucklespringApp:
         self.hotkey_summary_var = tk.StringVar()
         self.language_var = tk.StringVar(value=self.engine.language)
         self.hotkey_feedback_key = "hotkeys_persisted"
-        self.hotkey_feedback_kwargs = {"config_name": resolve_config_path().name}
+        self.hotkey_feedback_kwargs = {"config_name": self.engine.config_path.name}
         self.hotkey_feedback_color = TEXT_MUTED
         self.hotkey_feedback_var = tk.StringVar(value=self.tr(self.hotkey_feedback_key, **self.hotkey_feedback_kwargs))
         self.version_var = tk.StringVar(value=self.tr("version_chip", version=APP_VERSION))
@@ -744,7 +816,7 @@ class BucklespringApp:
         self.hide_button.configure(text=self.tr("button_minimize_to_tray"))
         self.exit_button.configure(text=self.tr("button_exit_session"))
         self.command_keys_label.configure(text=self.tr("section_command_keys"))
-        self.config_path_label.configure(text=self.tr("config_saved_in", config_name=resolve_config_path().name))
+        self.config_path_label.configure(text=self.tr("config_saved_in", config_name=self.engine.config_path.name))
         for action, widget in self.hotkey_label_widgets.items():
             widget.configure(text=self.hotkey_label(action))
         for action, widget in self.hotkey_description_widgets.items():
@@ -937,7 +1009,7 @@ class BucklespringApp:
         self.command_keys_label.pack(anchor="w")
         self.config_path_label = tk.Label(
             hotkey_panel,
-            text=self.tr("config_saved_in", config_name=resolve_config_path().name),
+            text=self.tr("config_saved_in", config_name=self.engine.config_path.name),
             bg=PANEL_COLOR,
             fg=TEXT_MUTED,
             font=("Consolas", 9),
@@ -1694,7 +1766,7 @@ class BucklespringApp:
     def refresh_ui(self) -> None:
         status = self.tr("status_word_active") if self.engine.enabled else self.tr("status_word_muted")
         mixer_state = self.tr("mixer_online") if self.engine.mixer_ready else self.tr("mixer_unavailable")
-        self.status_var.set(self.tr("status_summary", status=status, mixer=mixer_state, config_name=resolve_config_path().name))
+        self.status_var.set(self.tr("status_summary", status=status, mixer=mixer_state, config_name=self.engine.config_path.name))
         self.substatus_var.set(self.tr("substatus_summary"))
         self.version_var.set(self.tr("version_chip", version=APP_VERSION))
         self.signature_var.set(self.tr("build_signature"))
@@ -1768,7 +1840,7 @@ class BucklespringApp:
             self._sync_hotkey_entries()
             return
 
-        self._set_hotkey_feedback("hotkeys_applied", color=ACCENT_GREEN, config_name=resolve_config_path().name)
+        self._set_hotkey_feedback("hotkeys_applied", color=ACCENT_GREEN, config_name=self.engine.config_path.name)
         self._sync_hotkey_entries()
         self.refresh_ui()
 

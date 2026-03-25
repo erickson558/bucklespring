@@ -4,7 +4,7 @@ Bucklespring reproduce sonidos mecánicos de teclado en Windows usando un hook g
 
 ## Versión actual
 
-`V1.5.0`
+`V1.5.1`
 
 El proyecto usa versionado `Vx.x.x` con criterio semántico:
 - `major`: cambios incompatibles.
@@ -32,6 +32,7 @@ El proyecto usa versionado `Vx.x.x` con criterio semántico:
 
 ## Cambios recientes
 
+- `V1.5.1`: el worker de audio ahora sobrevive a WAV dañados o ausentes, se ignoran liberaciones huérfanas para evitar clics fantasma y la configuración cae a una ruta segura si la carpeta de la app no permite escritura.
 - `V1.5.0`: soporte multi-idioma para la GUI con cambio desde la barra de menús y persistencia del idioma seleccionado.
 - `V1.4.1`: corrección del workflow de release para que el tag y el GitHub Release se generen correctamente a partir de `main`.
 - `V1.4.0`: barra de menús con About, laboratorio de captura `Fn`, pipeline de audio no bloqueante y versión visible en más puntos de la GUI.
@@ -106,6 +107,7 @@ Cada push a `main` ejecuta `.github/workflows/release.yml` para:
 
 - La tecla `Fn` normalmente no genera eventos estándar en Windows porque depende del firmware del teclado. La app intenta usar un fallback genérico si el sistema sí reporta ese evento, pero no hay garantía absoluta de captura en todos los teclados.
 - Si existe una carpeta `audios` junto al `.exe`, la app la usa primero. Si no existe, usa los audios empaquetados en el binario.
+- Si la carpeta del programa no permite escribir `config.json`, la app guarda la configuración en `%LOCALAPPDATA%\\Bucklespring\\config.json` sin interrumpir el audio ni la GUI.
 
 ## Licencia
 
