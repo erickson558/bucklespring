@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.spec
+.venv/
+build/
+dist/
+Bucklespring.exe_extracted/
+BucklespringV1.exe
+bucklespring_gui.png
+peinfo.cs
