@@ -4,18 +4,26 @@ Bucklespring reproduce sonidos mecánicos de teclado en Windows usando un hook g
 
 ## Versión actual
 
-`V1.2.0`
+`V1.4.0`
+
+El proyecto usa versionado `Vx.x.x` con criterio semántico:
+- `major`: cambios incompatibles.
+- `minor`: nuevas funciones compatibles.
+- `patch`: correcciones o ajustes sin romper compatibilidad.
 
 ## Funcionalidades
 
 - GUI futurista estilo HUD para activar o desactivar el sonido sin abrir consola.
+- Barra de menús estilo Windows con `Archivo`, `Configuracion` y `Ayuda`.
 - Icono en la bandeja del sistema, junto al reloj de Windows.
-- Persistencia de volumen y estado en `~/.keyboard_sounds_config.json`.
+- Dial de volumen interactivo dentro de la GUI.
+- Persistencia de volumen, estado y hotkeys en `config.json`.
+- About dialog con versión y autor.
+- Laboratorio `Fn Capture Lab` para inspeccionar eventos crudos de teclado.
+- Ruta de audio no bloqueante para evitar congelamientos de la GUI.
 - Atajos globales:
-  - `Alt+M`: activa o silencia el sonido.
-  - `Alt+Up`: sube el volumen.
-  - `Alt+Down`: baja el volumen.
-  - `Ctrl+Esc`: cierra la aplicación.
+  - Editables desde la GUI y persistentes entre reinicios.
+  - Incluyen activar/silenciar, subir, bajar, enviar al tray y salir.
 - Resolución mejorada de teclas:
   - Soporta teclas estándar por `scan code`.
   - Añade cobertura para `Win`, `Shift`, `AltGr`, flechas y teclas extendidas.
@@ -23,6 +31,8 @@ Bucklespring reproduce sonidos mecánicos de teclado en Windows usando un hook g
 
 ## Cambios recientes
 
+- `V1.4.0`: barra de menús con About, laboratorio de captura `Fn`, pipeline de audio no bloqueante y versión visible en más puntos de la GUI.
+- `V1.3.0`: dial interactivo, hotkeys configurables con `config.json`, salida segura al tray y rango de volumen 0-100%.
 - `V1.2.0`: rediseño futurista de la GUI, panel de volumen visual tipo matriz y mejoras estéticas del panel residente.
 - `V1.1.0`: GUI base, bandeja del sistema, build silencioso y cobertura ampliada de teclas.
 
@@ -60,8 +70,24 @@ python .\bucklespring.py --version
 El build genera un único ejecutable `Bucklespring.exe` en la misma carpeta del `.py`, usa `bucklespring.ico` y no levanta consola.
 
 ```powershell
-pyinstaller --noconfirm --clean --onefile --windowed --name Bucklespring --icon bucklespring.ico --version-file .\file_version_info.txt --distpath . --workpath build --specpath . --add-data "audios;audios" --add-data "bucklespring.ico;." --hidden-import pystray._win32 --exclude-module pygame.tests --exclude-module pygame.examples .\bucklespring.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name Bucklespring --icon bucklespring.ico --version-file .\file_version_info.txt --distpath . --workpath build --specpath . --add-data "audios;audios" --add-data "bucklespring.ico;." --hidden-import pystray._win32 --exclude-module pygame.tests --exclude-module pygame.examples .\bucklespring.py
 ```
+
+También puedes usar el script reproducible:
+
+```powershell
+.\build.ps1
+```
+
+## Release automático
+
+Cada push a `main` ejecuta `.github/workflows/release.yml` para:
+
+- leer `APP_VERSION` desde `version.py`
+- compilar `Bucklespring.exe`
+- validar o crear el tag de la versión actual
+- generar o actualizar el release de GitHub
+- adjuntar el `.exe` y usar la sección correspondiente de `CHANGELOG.md` como notas
 
 ## Archivos relevantes
 
@@ -75,7 +101,7 @@ pyinstaller --noconfirm --clean --onefile --windowed --name Bucklespring --icon 
 
 ## Notas
 
-- La tecla `Fn` normalmente no genera eventos estándar en Windows porque depende del firmware del teclado. Por eso no hay garantía de captura para esa tecla en software de usuario.
+- La tecla `Fn` normalmente no genera eventos estándar en Windows porque depende del firmware del teclado. La app intenta usar un fallback genérico si el sistema sí reporta ese evento, pero no hay garantía absoluta de captura en todos los teclados.
 - Si existe una carpeta `audios` junto al `.exe`, la app la usa primero. Si no existe, usa los audios empaquetados en el binario.
 
 ## Licencia

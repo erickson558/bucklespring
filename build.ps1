@@ -1,9 +1,10 @@
 $ErrorActionPreference = "Stop"
 $env:PYGAME_HIDE_SUPPORT_PROMPT = "1"
 
+python -m pip install --upgrade pip
 python -m pip install -r .\requirements.txt
 
-pyinstaller `
+python -m PyInstaller `
   --noconfirm `
   --clean `
   --onefile `

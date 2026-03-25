@@ -6,11 +6,16 @@ import ctypes
 import json
 import math
 import os
+import queue
 import sys
 import threading
 import tkinter as tk
 import warnings
+from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
+from tkinter import messagebox, scrolledtext
+from typing import Callable
 
 import keyboard
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
@@ -19,14 +24,15 @@ import pygame
 import pystray
 from PIL import Image, ImageDraw
 
-from version import APP_NAME, APP_VERSION
+from version import APP_AUTHOR, APP_LICENSE, APP_NAME, APP_VERSION
 
 
 DEFAULT_VOLUME = 0.10
-MIN_VOLUME = 0.01
-MAX_VOLUME = 0.95
+MIN_VOLUME = 0.0
+MAX_VOLUME = 1.0
 VOLUME_STEP = 0.05
-CONFIG_FILE = Path.home() / ".keyboard_sounds_config.json"
+CONFIG_FILE_NAME = "config.json"
+LEGACY_CONFIG_FILE = Path.home() / ".keyboard_sounds_config.json"
 TRAY_TITLE = f"{APP_NAME} {APP_VERSION}"
 UNKNOWN_STEM = "ff"
 ICON_FILE_NAME = "bucklespring.ico"
@@ -42,13 +48,17 @@ ACCENT_GREEN = "#8effb3"
 ACCENT_ORANGE = "#ff9b54"
 ACCENT_RED = "#ff5f71"
 GRID_LINE = "#12323e"
-HOTKEYS = (
-    ("ALT+M", "Activa o silencia el motor"),
-    ("ALT+UP", "Sube el nivel de salida"),
-    ("ALT+DOWN", "Reduce el nivel de salida"),
-    ("CTRL+ESC", "Cierra la sesión residente"),
+HOTKEY_FIELDS = (
+    ("toggle_enabled", "TOGGLE ENGINE", "Activa o silencia el motor", "ctrl+alt+m"),
+    ("volume_up", "VOLUME UP", "Sube el nivel de salida", "ctrl+alt+up"),
+    ("volume_down", "VOLUME DOWN", "Reduce el nivel de salida", "ctrl+alt+down"),
+    ("hide_window", "SEND TO TRAY", "Oculta la ventana y deja el icono residente", "ctrl+alt+h"),
+    ("exit_application", "EXIT SESSION", "Cierra por completo la aplicación residente", "ctrl+alt+q"),
 )
-BUILD_SIGNATURE = "silent build / tray online / extended keymap"
+DEFAULT_HOTKEYS = {action: hotkey for action, _label, _description, hotkey in HOTKEY_FIELDS}
+HOTKEY_LABELS = {action: label for action, label, _description, _hotkey in HOTKEY_FIELDS}
+HOTKEY_DESCRIPTIONS = {action: description for action, _label, description, _hotkey in HOTKEY_FIELDS}
+BUILD_SIGNATURE = "async audio / tray online / hotkeys configurable"
 
 KEY_NAME_OVERRIDES = {
     "right windows": "61",
@@ -109,6 +119,10 @@ def app_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+def resolve_config_path() -> Path:
+    return app_root() / CONFIG_FILE_NAME
+
+
 def resolve_audio_dir() -> Path:
     external = app_root() / "audios"
     bundled = bundle_root() / "audios"
@@ -131,6 +145,32 @@ def clamp(value: float, minimum: float = MIN_VOLUME, maximum: float = MAX_VOLUME
 
 def normalize_name(name: str | None) -> str:
     return (name or "").strip().lower()
+
+
+def normalize_hotkey(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    parts: list[str] = []
+    for raw_part in value.split("+"):
+        token = " ".join(raw_part.strip().lower().split())
+        if token:
+            parts.append(token)
+
+    if not parts:
+        return None
+    return "+".join(parts)
+
+
+def format_hotkey(value: str) -> str:
+    return " + ".join(part.upper() for part in value.split("+"))
+
+
+@dataclass(frozen=True)
+class KeyEventSnapshot:
+    name: str | None
+    scan_code: int | None
+    event_type: str
 
 
 class SingleInstanceGuard:
@@ -162,13 +202,19 @@ class SoundEngine:
         self.audio_dir = resolve_audio_dir()
         self.volume = DEFAULT_VOLUME
         self.enabled = True
+        self.hotkeys = dict(DEFAULT_HOTKEYS)
         self.pressed_keys: set[tuple[int | None, str, str]] = set()
         self.sound_files = self._discover_sound_files()
         self.sound_cache: dict[Path, pygame.mixer.Sound] = {}
         self.cache_lock = threading.Lock()
+        self.audio_queue: queue.Queue[KeyEventSnapshot | None] = queue.Queue()
+        self.event_observers: list[Callable[[KeyEventSnapshot], None]] = []
+        self.worker_stop = threading.Event()
         self.mixer_ready = False
         self._setup_mixer()
         self.load_settings()
+        self.audio_worker = threading.Thread(target=self._audio_worker_loop, name="bucklespring-audio", daemon=True)
+        self.audio_worker.start()
 
     def _setup_mixer(self) -> None:
         try:
@@ -202,8 +248,35 @@ class SoundEngine:
                 self.sound_cache[path] = sound
             return sound
 
-    def resolve_stem(self, event: keyboard.KeyboardEvent) -> str | None:
+    def _audio_worker_loop(self) -> None:
+        while not self.worker_stop.is_set():
+            snapshot = self.audio_queue.get()
+            if snapshot is None:
+                break
+            self.play_for_event(snapshot)
+
+    def add_event_observer(self, callback: Callable[[KeyEventSnapshot], None]) -> None:
+        self.event_observers.append(callback)
+
+    def _emit_event(self, snapshot: KeyEventSnapshot) -> None:
+        for callback in list(self.event_observers):
+            try:
+                callback(snapshot)
+            except Exception:
+                continue
+
+    def _snapshot_from_event(self, event: keyboard.KeyboardEvent) -> KeyEventSnapshot:
+        return KeyEventSnapshot(
+            name=getattr(event, "name", None),
+            scan_code=getattr(event, "scan_code", None),
+            event_type=getattr(event, "event_type", "down"),
+        )
+
+    def resolve_stem(self, event: KeyEventSnapshot | keyboard.KeyboardEvent) -> str | None:
         name = normalize_name(event.name)
+
+        if name in {"fn", "function", "fn lock", "function lock"}:
+            return UNKNOWN_STEM if UNKNOWN_STEM in self.sound_files else None
 
         if name in KEY_NAME_OVERRIDES:
             return KEY_NAME_OVERRIDES[name]
@@ -223,7 +296,7 @@ class SoundEngine:
 
         return UNKNOWN_STEM if UNKNOWN_STEM in self.sound_files else None
 
-    def play_for_event(self, event: keyboard.KeyboardEvent) -> None:
+    def play_for_event(self, event: KeyEventSnapshot | keyboard.KeyboardEvent) -> None:
         if not self.enabled or not self.mixer_ready:
             return
 
@@ -243,24 +316,44 @@ class SoundEngine:
         sound.play()
 
     def load_settings(self) -> None:
-        if not CONFIG_FILE.exists():
-            return
+        data: dict[str, object] = {}
+        for path in (resolve_config_path(), LEGACY_CONFIG_FILE):
+            if not path.exists():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                break
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                continue
 
         try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            return
-
-        self.volume = clamp(float(data.get("volume", self.volume)))
+            self.volume = clamp(float(data.get("volume", self.volume)))
+        except (TypeError, ValueError):
+            self.volume = clamp(self.volume)
         self.enabled = bool(data.get("enabled", self.enabled))
+        stored_hotkeys = data.get("hotkeys", {})
+        if isinstance(stored_hotkeys, dict):
+            merged = dict(DEFAULT_HOTKEYS)
+            for action in DEFAULT_HOTKEYS:
+                normalized = normalize_hotkey(stored_hotkeys.get(action))
+                if normalized is not None:
+                    try:
+                        keyboard.parse_hotkey(normalized)
+                    except Exception:
+                        continue
+                    merged[action] = normalized
+            self.hotkeys = merged
 
     def save_settings(self) -> None:
+        config_path = resolve_config_path()
         payload = {
             "volume": round(self.volume, 2),
             "enabled": self.enabled,
+            "hotkeys": self.hotkeys,
             "version": APP_VERSION,
         }
-        CONFIG_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = bool(enabled)
@@ -279,6 +372,10 @@ class SoundEngine:
     def adjust_volume(self, delta: float) -> float:
         return self.set_volume(self.volume + delta)
 
+    def set_hotkeys(self, hotkeys: dict[str, str]) -> None:
+        self.hotkeys = dict(hotkeys)
+        self.save_settings()
+
     def handle_key_event(self, event: keyboard.KeyboardEvent) -> None:
         event_key = (getattr(event, "scan_code", None), normalize_name(event.name), event.event_type)
         opposite_key = (getattr(event, "scan_code", None), normalize_name(event.name), "down")
@@ -290,11 +387,17 @@ class SoundEngine:
         else:
             self.pressed_keys.discard(opposite_key)
 
-        self.play_for_event(event)
+        snapshot = self._snapshot_from_event(event)
+        self._emit_event(snapshot)
+        self.audio_queue.put(snapshot)
 
     def shutdown(self) -> None:
         keyboard.unhook_all()
         keyboard.clear_all_hotkeys()
+        self.worker_stop.set()
+        self.audio_queue.put(None)
+        if self.audio_worker.is_alive():
+            self.audio_worker.join(timeout=1)
         if self.mixer_ready:
             pygame.mixer.quit()
 
@@ -308,8 +411,8 @@ class BucklespringApp:
         self.root.resizable(True, True)
         self.root.protocol("WM_DELETE_WINDOW", self.hide_window)
         self.root.bind("<Unmap>", self._on_unmap)
-        self.root.geometry("920x720")
-        self.root.minsize(900, 700)
+        self.root.geometry("980x780")
+        self.root.minsize(940, 740)
 
         icon_path = resolve_icon_path()
         if icon_path.exists():
@@ -321,10 +424,29 @@ class BucklespringApp:
         self.status_var = tk.StringVar()
         self.substatus_var = tk.StringVar()
         self.volume_label_var = tk.StringVar()
+        self.hotkey_summary_var = tk.StringVar()
+        self.hotkey_feedback_var = tk.StringVar()
+        self.version_var = tk.StringVar(value=f"VERSION {APP_VERSION}")
         self.signature_var = tk.StringVar(value=BUILD_SIGNATURE.upper())
         self.volume_var = tk.IntVar(value=int(round(self.engine.volume * 100)))
+        self.hotkey_entry_vars = {
+            action: tk.StringVar(value=format_hotkey(self.engine.hotkeys[action]))
+            for action, _label, _description, _default in HOTKEY_FIELDS
+        }
+        self.hotkey_callbacks = {
+            "toggle_enabled": self._hotkey_toggle_enabled,
+            "volume_up": self._hotkey_volume_up,
+            "volume_down": self._hotkey_volume_down,
+            "hide_window": self._hotkey_hide_window,
+            "exit_application": self._hotkey_exit,
+        }
         self.scanline_y = 0
         self.background_after_id: str | None = None
+        self.diagnostic_events: queue.Queue[KeyEventSnapshot] = queue.Queue()
+        self.fn_capture_window: tk.Toplevel | None = None
+        self.fn_capture_text: scrolledtext.ScrolledText | None = None
+        self.fn_capture_status_var = tk.StringVar(value="Presiona Fn y otras teclas para inspeccionar nombre, scan code y tipo de evento.")
+        self.fn_capture_samples = 0
 
         self.tray_icon = pystray.Icon(
             APP_NAME,
@@ -345,11 +467,15 @@ class BucklespringApp:
         self.surface.place(relx=0.5, rely=0.5, relwidth=0.94, relheight=0.92, anchor="center")
         self.root.bind("<Configure>", self._on_root_configure)
 
+        self.engine.add_event_observer(self._queue_diagnostic_event)
         self._build_ui()
+        self._build_menu()
+        self._bind_menu_shortcuts()
         self._register_keyboard_hooks()
         self.refresh_ui()
         self._draw_background()
         self._animate_background()
+        self._drain_diagnostic_queue()
 
     def _build_ui(self) -> None:
         self.surface.grid_rowconfigure(0, weight=0)
@@ -416,7 +542,7 @@ class BucklespringApp:
         self.status_badge.pack(anchor="e")
         self.version_chip = tk.Label(
             right_hero,
-            text=APP_VERSION,
+            textvariable=self.version_var,
             bg="#0f3542",
             fg=ACCENT_CYAN,
             font=("Consolas", 11, "bold"),
@@ -424,10 +550,14 @@ class BucklespringApp:
             pady=6,
         )
         self.version_chip.pack(anchor="e", pady=(14, 12))
+        self.hero_tray_button = self._make_action_button(right_hero, "SEND TO TRAY", self.hide_window, "#0a3340", ACCENT_CYAN)
+        self.hero_tray_button.pack(anchor="e", fill="x", pady=(0, 12))
+        self.hero_exit_button = self._make_action_button(right_hero, "EXIT APPLICATION", self.exit_application, "#31151a", ACCENT_RED)
+        self.hero_exit_button.pack(anchor="e", fill="x", pady=(0, 12))
         self.health_stack = tk.Frame(right_hero, bg=PANEL_ALT_COLOR)
         self.health_stack.pack(anchor="e", fill="x")
         self.health_chips: list[tk.Label] = []
-        for label in ("HOOK LIVE", "TRAY READY", "KEYMAP WIDE"):
+        for label in ("HOOK LIVE", "TRAY READY", "ASYNC AUDIO"):
             chip = tk.Label(
                 self.health_stack,
                 text=label,
@@ -472,7 +602,7 @@ class BucklespringApp:
 
         self.controls_hint = tk.Label(
             controls_body,
-            text="Window closes to tray, not to desktop. Silent mode stays armed until you exit.\nAlt+M toggle  |  Alt+Up raise  |  Alt+Down lower  |  Ctrl+Esc exit",
+            textvariable=self.hotkey_summary_var,
             bg=PANEL_COLOR,
             fg=TEXT_MUTED,
             justify="left",
@@ -489,9 +619,114 @@ class BucklespringApp:
         self.exit_button = self._make_action_button(command_row, "EXIT SESSION", self.exit_application, "#31151a", ACCENT_RED)
         self.exit_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
+        hotkey_panel = tk.Frame(controls_body, bg=PANEL_COLOR)
+        hotkey_panel.pack(fill="x", pady=(18, 0))
+        tk.Label(
+            hotkey_panel,
+            text="COMMAND KEYS",
+            bg=PANEL_COLOR,
+            fg=ACCENT_CYAN,
+            font=("Bahnschrift SemiBold", 11, "bold"),
+            anchor="w",
+        ).pack(anchor="w")
+        tk.Label(
+            hotkey_panel,
+            text=f"Persistent profile saved in {resolve_config_path().name}",
+            bg=PANEL_COLOR,
+            fg=TEXT_MUTED,
+            font=("Consolas", 9),
+            anchor="w",
+        ).pack(anchor="w", pady=(3, 10))
+
+        hotkey_grid = tk.Frame(hotkey_panel, bg=PANEL_COLOR)
+        hotkey_grid.pack(fill="x")
+        hotkey_grid.grid_columnconfigure(0, weight=0)
+        hotkey_grid.grid_columnconfigure(1, weight=1)
+        hotkey_grid.grid_columnconfigure(2, weight=0)
+
+        self.hotkey_entries: dict[str, tk.Entry] = {}
+        for row, (action, label, description, _default) in enumerate(HOTKEY_FIELDS):
+            tk.Label(
+                hotkey_grid,
+                text=label,
+                bg=PANEL_COLOR,
+                fg=TEXT_PRIMARY,
+                font=("Bahnschrift SemiBold", 10, "bold"),
+                anchor="w",
+            ).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
+            entry = tk.Entry(
+                hotkey_grid,
+                textvariable=self.hotkey_entry_vars[action],
+                bg="#09161c",
+                fg=ACCENT_CYAN,
+                insertbackground=ACCENT_CYAN,
+                relief="flat",
+                bd=0,
+                font=("Consolas", 11),
+                width=18,
+            )
+            entry.grid(row=row, column=1, sticky="ew", pady=5)
+            self.hotkey_entries[action] = entry
+            tk.Label(
+                hotkey_grid,
+                text=description,
+                bg=PANEL_COLOR,
+                fg=TEXT_MUTED,
+                font=("Consolas", 8),
+                anchor="w",
+                justify="left",
+                wraplength=150,
+            ).grid(row=row, column=2, sticky="w", padx=(10, 0), pady=5)
+
+        hotkey_actions = tk.Frame(hotkey_panel, bg=PANEL_COLOR)
+        hotkey_actions.pack(fill="x", pady=(12, 0))
+        self.hotkey_apply_button = self._make_action_button(hotkey_actions, "APPLY HOTKEYS", self.apply_hotkeys_from_gui, "#12362f", ACCENT_GREEN)
+        self.hotkey_apply_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        self.hotkey_reset_button = self._make_action_button(hotkey_actions, "RESET DEFAULTS", self.reset_hotkeys_to_defaults, "#2e2413", ACCENT_ORANGE)
+        self.hotkey_reset_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
+        self.hotkey_feedback_label = tk.Label(
+            hotkey_panel,
+            textvariable=self.hotkey_feedback_var,
+            bg=PANEL_COLOR,
+            fg=TEXT_MUTED,
+            justify="left",
+            anchor="w",
+            font=("Consolas", 9),
+            wraplength=330,
+        )
+        self.hotkey_feedback_label.pack(fill="x", pady=(10, 0))
+
+        lab_actions = tk.Frame(hotkey_panel, bg=PANEL_COLOR)
+        lab_actions.pack(fill="x", pady=(12, 0))
+        self.fn_lab_button = self._make_action_button(lab_actions, "FN CAPTURE LAB", self.open_fn_capture_window, "#12303c", ACCENT_CYAN)
+        self.fn_lab_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        self.about_button = self._make_action_button(lab_actions, "ABOUT", self.show_about_dialog, "#14242c", TEXT_PRIMARY)
+        self.about_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
+
         output_body = output["body"]
+        visuals = tk.Frame(output_body, bg=PANEL_COLOR)
+        visuals.pack(fill="x")
+        visuals.grid_columnconfigure(0, weight=0)
+        visuals.grid_columnconfigure(1, weight=1)
+
+        self.volume_dial_canvas = tk.Canvas(
+            visuals,
+            bg=PANEL_COLOR,
+            bd=0,
+            highlightthickness=0,
+            width=220,
+            height=220,
+            relief="flat",
+            cursor="hand2",
+        )
+        self.volume_dial_canvas.grid(row=0, column=0, sticky="nw", padx=(0, 18))
+        self.volume_dial_canvas.bind("<Button-1>", self._on_volume_dial_interact)
+        self.volume_dial_canvas.bind("<B1-Motion>", self._on_volume_dial_interact)
+
+        output_status = tk.Frame(visuals, bg=PANEL_COLOR)
+        output_status.grid(row=0, column=1, sticky="nsew")
         self.volume_display = tk.Label(
-            output_body,
+            output_status,
             textvariable=self.volume_label_var,
             bg=PANEL_COLOR,
             fg=TEXT_PRIMARY,
@@ -499,16 +734,50 @@ class BucklespringApp:
             anchor="w",
         )
         self.volume_display.pack(fill="x")
+        tk.Label(
+            output_status,
+            text="Dial the ring or click the bars to set live output with exact persistence.",
+            bg=PANEL_COLOR,
+            fg=TEXT_MUTED,
+            font=("Segoe UI", 10),
+            anchor="w",
+            justify="left",
+            wraplength=280,
+        ).pack(fill="x", pady=(6, 12))
+        self.output_state_label = tk.Label(
+            output_status,
+            text="TRAY MIRROR ACTIVE",
+            bg="#0b3038",
+            fg=ACCENT_CYAN,
+            font=("Consolas", 10, "bold"),
+            padx=12,
+            pady=8,
+            anchor="w",
+        )
+        self.output_state_label.pack(fill="x", pady=(0, 10))
+        self.output_hotkey_label = tk.Label(
+            output_status,
+            text="",
+            bg="#0b2430",
+            fg=TEXT_PRIMARY,
+            font=("Consolas", 10),
+            justify="left",
+            anchor="w",
+            padx=12,
+            pady=10,
+        )
+        self.output_hotkey_label.pack(fill="x")
+
         self.volume_canvas = tk.Canvas(
             output_body,
             bg=PANEL_COLOR,
             bd=0,
             highlightthickness=0,
-            height=178,
+            height=150,
             relief="flat",
             cursor="hand2",
         )
-        self.volume_canvas.pack(fill="both", expand=True, pady=(10, 10))
+        self.volume_canvas.pack(fill="both", expand=True, pady=(14, 10))
         self.volume_canvas.bind("<Button-1>", self._on_volume_canvas_click)
 
         output_controls = tk.Frame(output_body, bg=PANEL_COLOR)
@@ -517,6 +786,46 @@ class BucklespringApp:
         self.decrease_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
         self.increase_button = self._make_action_button(output_controls, "+ 5%", lambda: self._set_volume_and_refresh(self.engine.adjust_volume(VOLUME_STEP)), "#12362f", ACCENT_GREEN)
         self.increase_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
+
+    def _build_menu(self) -> None:
+        self.menu_bar = tk.Menu(self.root)
+
+        self.file_menu = tk.Menu(self.menu_bar, tearoff=False)
+        self.file_menu.add_command(label="Enviar al tray", underline=10, command=self.hide_window, accelerator="")
+        self.file_menu.add_command(label="Mostrar ventana", underline=0, command=self.show_window, accelerator="")
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Salir", underline=0, command=self.exit_application, accelerator="")
+        self.menu_bar.add_cascade(label="Archivo", menu=self.file_menu, underline=0)
+
+        self.settings_menu = tk.Menu(self.menu_bar, tearoff=False)
+        self.settings_menu.add_command(label="Aplicar atajos", underline=0, command=self.apply_hotkeys_from_gui, accelerator="Ctrl+Enter")
+        self.settings_menu.add_command(label="Restaurar atajos", underline=0, command=self.reset_hotkeys_to_defaults, accelerator="Ctrl+Shift+R")
+        self.settings_menu.add_separator()
+        self.settings_menu.add_command(label="Laboratorio Fn", underline=0, command=self.open_fn_capture_window, accelerator="Ctrl+Shift+F")
+        self.menu_bar.add_cascade(label="Configuracion", menu=self.settings_menu, underline=0)
+
+        self.help_menu = tk.Menu(self.menu_bar, tearoff=False)
+        self.help_menu.add_command(label="About", underline=0, command=self.show_about_dialog, accelerator="F1")
+        self.menu_bar.add_cascade(label="Ayuda", menu=self.help_menu, underline=1)
+
+        self.root.configure(menu=self.menu_bar)
+        self._update_menu_labels()
+
+    def _bind_menu_shortcuts(self) -> None:
+        self.root.bind_all("<F1>", self._on_about_shortcut)
+        self.root.bind_all("<Control-Return>", self._on_apply_hotkeys_shortcut)
+        self.root.bind_all("<Control-Shift-R>", self._on_reset_hotkeys_shortcut)
+        self.root.bind_all("<Control-Shift-F>", self._on_fn_capture_shortcut)
+        self.root.bind_all("<Control-Shift-W>", self._on_show_window_shortcut)
+
+    def _update_menu_labels(self) -> None:
+        if not hasattr(self, "file_menu"):
+            return
+
+        self.file_menu.entryconfigure(0, accelerator=format_hotkey(self.engine.hotkeys["hide_window"]))
+        self.file_menu.entryconfigure(1, accelerator="Ctrl + Shift + W")
+        self.file_menu.entryconfigure(3, accelerator=format_hotkey(self.engine.hotkeys["exit_application"]))
+        self.help_menu.entryconfigure(0, label=f"About {APP_VERSION}")
 
 
     def _create_panel(
@@ -588,10 +897,206 @@ class BucklespringApp:
 
     def _register_keyboard_hooks(self) -> None:
         keyboard.hook(self.engine.handle_key_event)
-        keyboard.add_hotkey("alt+m", self._hotkey_toggle_enabled)
-        keyboard.add_hotkey("alt+up", self._hotkey_volume_up)
-        keyboard.add_hotkey("alt+down", self._hotkey_volume_down)
-        keyboard.add_hotkey("ctrl+esc", self._hotkey_exit)
+        try:
+            self._register_hotkeys(self.engine.hotkeys)
+        except Exception:
+            self.engine.hotkeys = dict(DEFAULT_HOTKEYS)
+            self._register_hotkeys(self.engine.hotkeys)
+            self.engine.save_settings()
+
+    def _register_hotkeys(self, hotkeys: dict[str, str]) -> None:
+        keyboard.clear_all_hotkeys()
+        seen: set[str] = set()
+        for action, _label, _description, _default in HOTKEY_FIELDS:
+            hotkey = normalize_hotkey(hotkeys.get(action))
+            if hotkey is None:
+                raise ValueError(f"El atajo para {HOTKEY_LABELS[action]} no puede quedar vacio.")
+            if hotkey in seen:
+                raise ValueError(f"El atajo {format_hotkey(hotkey)} esta repetido.")
+            keyboard.parse_hotkey(hotkey)
+            keyboard.add_hotkey(hotkey, self.hotkey_callbacks[action])
+            seen.add(hotkey)
+
+    def _apply_hotkeys(self, hotkeys: dict[str, str], *, persist: bool) -> None:
+        previous = dict(self.engine.hotkeys)
+        try:
+            self._register_hotkeys(hotkeys)
+        except Exception:
+            self._register_hotkeys(previous)
+            raise
+
+        if persist:
+            self.engine.set_hotkeys(hotkeys)
+        else:
+            self.engine.hotkeys = dict(hotkeys)
+
+    def _queue_diagnostic_event(self, snapshot: KeyEventSnapshot) -> None:
+        if self.fn_capture_window is None:
+            return
+        self.diagnostic_events.put(snapshot)
+
+    def _drain_diagnostic_queue(self) -> None:
+        while True:
+            try:
+                snapshot = self.diagnostic_events.get_nowait()
+            except queue.Empty:
+                break
+            self._append_diagnostic_snapshot(snapshot)
+
+        self.root.after(80, self._drain_diagnostic_queue)
+
+    def _append_diagnostic_snapshot(self, snapshot: KeyEventSnapshot) -> None:
+        if self.fn_capture_text is None or self.fn_capture_window is None:
+            return
+
+        self.fn_capture_samples += 1
+        scan_code = "--" if snapshot.scan_code is None else str(snapshot.scan_code)
+        key_name = snapshot.name or "(sin nombre)"
+        line = f"[{self.fn_capture_samples:03d}] type={snapshot.event_type:<5} scan={scan_code:<4} name={key_name}\n"
+        self.fn_capture_text.insert("end", line)
+        self.fn_capture_text.see("end")
+
+        if normalize_name(snapshot.name) in {"fn", "function", "fn lock", "function lock"}:
+            self.fn_capture_status_var.set("Fn fue detectada por Windows. Ya podemos mapearla con el evento real mostrado arriba.")
+        else:
+            self.fn_capture_status_var.set("Presiona Fn. Si no aparece ninguna fila nueva, el firmware del teclado la esta consumiendo.")
+
+    def open_fn_capture_window(self) -> None:
+        if self.fn_capture_window is not None and self.fn_capture_window.winfo_exists():
+            self.fn_capture_window.deiconify()
+            self.fn_capture_window.lift()
+            self.fn_capture_window.focus_force()
+            return
+
+        window = tk.Toplevel(self.root)
+        window.title(f"{APP_NAME} {APP_VERSION} - Fn Capture Lab")
+        window.configure(bg=BACKGROUND_LAYER_TOP)
+        window.geometry("760x420")
+        window.minsize(680, 360)
+        window.transient(self.root)
+        window.protocol("WM_DELETE_WINDOW", self.close_fn_capture_window)
+        self.fn_capture_window = window
+        self.fn_capture_text = None
+        self.fn_capture_samples = 0
+
+        shell = tk.Frame(window, bg=PANEL_COLOR, padx=18, pady=16, highlightbackground=GRID_LINE, highlightthickness=1)
+        shell.pack(fill="both", expand=True, padx=20, pady=20)
+
+        tk.Label(
+            shell,
+            text="FN CAPTURE LAB",
+            bg=PANEL_COLOR,
+            fg=ACCENT_CYAN,
+            font=("Bahnschrift SemiBold", 15, "bold"),
+            anchor="w",
+        ).pack(anchor="w")
+        tk.Label(
+            shell,
+            text="Presiona Fn, Fn+otra tecla o cualquier tecla especial. Si Windows reporta el evento, quedara registrado aqui con nombre y scan code.",
+            bg=PANEL_COLOR,
+            fg=TEXT_MUTED,
+            font=("Segoe UI", 10),
+            justify="left",
+            wraplength=680,
+            anchor="w",
+        ).pack(fill="x", pady=(6, 10))
+
+        status = tk.Label(
+            shell,
+            textvariable=self.fn_capture_status_var,
+            bg="#0b2430",
+            fg=TEXT_PRIMARY,
+            font=("Consolas", 10),
+            justify="left",
+            anchor="w",
+            padx=12,
+            pady=10,
+        )
+        status.pack(fill="x", pady=(0, 12))
+
+        self.fn_capture_text = scrolledtext.ScrolledText(
+            shell,
+            bg="#07141a",
+            fg=ACCENT_CYAN,
+            insertbackground=ACCENT_CYAN,
+            relief="flat",
+            bd=0,
+            font=("Consolas", 10),
+            wrap="none",
+        )
+        self.fn_capture_text.pack(fill="both", expand=True)
+
+        action_row = tk.Frame(shell, bg=PANEL_COLOR)
+        action_row.pack(fill="x", pady=(12, 0))
+        self._make_action_button(action_row, "CLEAR LOG", self.clear_fn_capture_log, "#102832", ACCENT_CYAN).pack(side="left", expand=True, fill="x", padx=(0, 6))
+        self._make_action_button(action_row, "COPY LOG", self.copy_fn_capture_log, "#12362f", ACCENT_GREEN).pack(side="left", expand=True, fill="x", padx=6)
+        self._make_action_button(action_row, "CLOSE", self.close_fn_capture_window, "#31151a", ACCENT_RED).pack(side="left", expand=True, fill="x", padx=(6, 0))
+
+        self.fn_capture_status_var.set("Presiona Fn. Si no aparece ningun evento, el teclado no la expone a Windows.")
+        self.clear_fn_capture_log()
+
+    def clear_fn_capture_log(self) -> None:
+        self.fn_capture_samples = 0
+        if self.fn_capture_text is not None:
+            self.fn_capture_text.delete("1.0", "end")
+        self.fn_capture_status_var.set("Presiona Fn. Si no aparece ningun evento, el teclado no la expone a Windows.")
+
+    def copy_fn_capture_log(self) -> None:
+        if self.fn_capture_text is None:
+            return
+        content = self.fn_capture_text.get("1.0", "end").strip()
+        if not content:
+            self.fn_capture_status_var.set("Todavia no hay eventos para copiar.")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(content)
+        self.fn_capture_status_var.set("Log de captura copiado al portapapeles.")
+
+    def close_fn_capture_window(self) -> None:
+        if self.fn_capture_window is not None:
+            try:
+                self.fn_capture_window.destroy()
+            except tk.TclError:
+                pass
+        self.fn_capture_window = None
+        self.fn_capture_text = None
+
+    def show_about_dialog(self) -> None:
+        messagebox.showinfo(
+            title=f"About {APP_NAME}",
+            message=(
+                f"{APP_NAME} {APP_VERSION}\n"
+                f"Autor: {APP_AUTHOR}\n"
+                f"Licencia: {APP_LICENSE}\n"
+                f"Copyright (c) {date.today().year} {APP_AUTHOR}"
+            ),
+            parent=self.root,
+        )
+
+    def _on_about_shortcut(self, event: tk.Event) -> str:
+        del event
+        self.show_about_dialog()
+        return "break"
+
+    def _on_apply_hotkeys_shortcut(self, event: tk.Event) -> str:
+        del event
+        self.apply_hotkeys_from_gui()
+        return "break"
+
+    def _on_reset_hotkeys_shortcut(self, event: tk.Event) -> str:
+        del event
+        self.reset_hotkeys_to_defaults()
+        return "break"
+
+    def _on_fn_capture_shortcut(self, event: tk.Event) -> str:
+        del event
+        self.open_fn_capture_window()
+        return "break"
+
+    def _on_show_window_shortcut(self, event: tk.Event) -> str:
+        del event
+        self.show_window()
+        return "break"
 
     def load_icon_image(self) -> Image.Image:
         icon_path = resolve_icon_path()
@@ -615,6 +1120,7 @@ class BucklespringApp:
 
     def _on_root_configure(self, _event: tk.Event) -> None:
         self._draw_background()
+        self._draw_volume_dial()
         self._draw_volume_meter()
 
     def _draw_background(self) -> None:
@@ -694,7 +1200,7 @@ class BucklespringApp:
         normalized = (self.engine.volume - MIN_VOLUME) / (MAX_VOLUME - MIN_VOLUME)
         normalized = max(0.0, min(1.0, normalized))
         segments = 14
-        active_segments = int(math.ceil(normalized * segments))
+        active_segments = int(round(normalized * segments))
         left = 22
         right = width - 22
         top = 52
@@ -724,9 +1230,76 @@ class BucklespringApp:
             tick_x = left + ((right - left) / 3) * tick
             canvas.create_line(tick_x, bottom + 10, tick_x, bottom + 18, fill=GRID_LINE, width=1)
 
-        canvas.create_text(left, height - 18, text="01%", anchor="w", fill=TEXT_MUTED, font=("Consolas", 9))
+        canvas.create_text(left, height - 18, text="00%", anchor="w", fill=TEXT_MUTED, font=("Consolas", 9))
         canvas.create_text(width / 2, height - 18, text="VECTOR OUTPUT", anchor="center", fill=TEXT_MUTED, font=("Consolas", 9))
-        canvas.create_text(right, height - 18, text="95%", anchor="e", fill=TEXT_MUTED, font=("Consolas", 9))
+        canvas.create_text(right, height - 18, text="100%", anchor="e", fill=TEXT_MUTED, font=("Consolas", 9))
+
+    def _draw_volume_dial(self) -> None:
+        if not hasattr(self, "volume_dial_canvas"):
+            return
+
+        canvas = self.volume_dial_canvas
+        width = max(canvas.winfo_width(), 220)
+        height = max(canvas.winfo_height(), 220)
+        canvas.delete("all")
+
+        cx = width / 2
+        cy = height / 2
+        outer_radius = min(width, height) / 2 - 18
+        inner_radius = outer_radius - 20
+        normalized = (self.engine.volume - MIN_VOLUME) / (MAX_VOLUME - MIN_VOLUME)
+        normalized = max(0.0, min(1.0, normalized))
+        segments = 60
+
+        canvas.create_oval(
+            cx - outer_radius - 6,
+            cy - outer_radius - 6,
+            cx + outer_radius + 6,
+            cy + outer_radius + 6,
+            outline="#0b2631",
+            width=2,
+        )
+
+        for index in range(segments):
+            ratio = index / max(segments - 1, 1)
+            angle_deg = 135 + (ratio * 270)
+            radians = math.radians(angle_deg)
+            x1 = cx + (math.cos(radians) * inner_radius)
+            y1 = cy + (math.sin(radians) * inner_radius)
+            x2 = cx + (math.cos(radians) * outer_radius)
+            y2 = cy + (math.sin(radians) * outer_radius)
+
+            fill = "#0d2a35"
+            if ratio <= normalized + 1e-9:
+                fill = ACCENT_GREEN if ratio > 0.7 else ACCENT_CYAN
+                if not self.engine.enabled:
+                    fill = ACCENT_ORANGE
+            canvas.create_line(x1, y1, x2, y2, fill=fill, width=4, capstyle=tk.ROUND)
+
+        knob_angle = math.radians(135 + (normalized * 270))
+        knob_radius = (inner_radius + outer_radius) / 2
+        knob_x = cx + (math.cos(knob_angle) * knob_radius)
+        knob_y = cy + (math.sin(knob_angle) * knob_radius)
+        knob_fill = ACCENT_GREEN if self.engine.enabled else ACCENT_ORANGE
+
+        canvas.create_oval(knob_x - 9, knob_y - 9, knob_x + 9, knob_y + 9, fill=knob_fill, outline="#021014", width=2)
+        canvas.create_oval(cx - 54, cy - 54, cx + 54, cy + 54, fill="#07141a", outline="#11303b", width=2)
+        canvas.create_text(cx, cy - 14, text=f"{int(round(self.engine.volume * 100)):03d}%", fill=TEXT_PRIMARY, font=("Bahnschrift SemiBold", 28, "bold"))
+        canvas.create_text(cx, cy + 16, text="OUTPUT DIAL", fill=TEXT_MUTED, font=("Consolas", 10))
+        canvas.create_text(cx, cy + 36, text="ACTIVE" if self.engine.enabled else "MUTED", fill=knob_fill, font=("Consolas", 10, "bold"))
+        canvas.create_text(24, height - 20, text="0", fill=TEXT_MUTED, font=("Consolas", 9), anchor="w")
+        canvas.create_text(width - 24, height - 20, text="100", fill=TEXT_MUTED, font=("Consolas", 9), anchor="e")
+
+    def _volume_ratio_from_point(self, x: float, y: float, width: int, height: int) -> float:
+        cx = width / 2
+        cy = height / 2
+        angle = (math.degrees(math.atan2(y - cy, x - cx)) + 360) % 360
+
+        if 45 < angle < 135:
+            return 0.0 if x < cx else 1.0
+        if angle < 135:
+            angle += 360
+        return max(0.0, min(1.0, (angle - 135) / 270))
 
     def _on_volume_canvas_click(self, event: tk.Event) -> None:
         canvas = self.volume_canvas
@@ -737,11 +1310,19 @@ class BucklespringApp:
         ratio = max(0.0, min(1.0, ratio))
         self._set_volume_and_refresh(self.engine.set_volume(MIN_VOLUME + ratio * (MAX_VOLUME - MIN_VOLUME)))
 
+    def _on_volume_dial_interact(self, event: tk.Event) -> None:
+        canvas = self.volume_dial_canvas
+        width = max(canvas.winfo_width(), 220)
+        height = max(canvas.winfo_height(), 220)
+        ratio = self._volume_ratio_from_point(event.x, event.y, width, height)
+        self._set_volume_and_refresh(self.engine.set_volume(MIN_VOLUME + ratio * (MAX_VOLUME - MIN_VOLUME)))
+
     def refresh_ui(self) -> None:
         status = "ACTIVO" if self.engine.enabled else "SILENCIADO"
         mixer_state = "audio bus online" if self.engine.mixer_ready else "audio bus unavailable"
-        self.status_var.set(f"Engine status: {status}\nMixer: {mixer_state}")
-        self.substatus_var.set("resident keyboard hook / tray armed / zero-console launch")
+        self.status_var.set(f"Engine status: {status}\nMixer: {mixer_state}\nConfig: {resolve_config_path().name}")
+        self.substatus_var.set(f"resident keyboard hook / tray armed / non-blocking audio path")
+        self.version_var.set(f"VERSION {APP_VERSION}")
         self.toggle_button.configure(
             text="DEACTIVATE ENGINE" if self.engine.enabled else "REACTIVATE ENGINE",
             bg="#114955" if self.engine.enabled else "#4f3017",
@@ -755,14 +1336,34 @@ class BucklespringApp:
         chip_specs = (
             ("HOOK LIVE" if self.engine.enabled else "HOOK IDLE", ACCENT_GREEN if self.engine.enabled else ACCENT_ORANGE),
             ("TRAY READY", ACCENT_CYAN),
-            ("KEYMAP WIDE", ACCENT_CYAN),
+            ("ASYNC AUDIO", ACCENT_CYAN),
         )
         for chip, (text, color) in zip(self.health_chips, chip_specs, strict=False):
             chip.configure(text=text, fg=color)
-        self.volume_var.set(int(round(self.engine.volume * 100)))
-        self.volume_label_var.set(f"OUTPUT LEVEL  {int(round(self.engine.volume * 100)):02d}%")
+        volume_percent = int(round(self.engine.volume * 100))
+        self.volume_var.set(volume_percent)
+        self.volume_label_var.set(f"OUTPUT LEVEL  {volume_percent:03d}%")
+        self.output_state_label.configure(
+            text="TRAY MIRROR ACTIVE" if self.engine.enabled else "AUDIO PATH MUTED",
+            fg=ACCENT_CYAN if self.engine.enabled else ACCENT_ORANGE,
+        )
+        summary = "  |  ".join(
+            f"{format_hotkey(self.engine.hotkeys[action])} {HOTKEY_LABELS[action]}"
+            for action, _label, _description, _default in HOTKEY_FIELDS
+        )
+        self.hotkey_summary_var.set(f"Window close or minimize sends the app to tray.\n{summary}")
+        self.output_hotkey_label.configure(
+            text=(
+                f"TRAY  {format_hotkey(self.engine.hotkeys['hide_window'])}\n"
+                f"EXIT  {format_hotkey(self.engine.hotkeys['exit_application'])}"
+            )
+        )
+        if not self.hotkey_feedback_var.get():
+            self.hotkey_feedback_var.set(f"Hotkeys persisted in {resolve_config_path().name} and reloaded on startup.")
         self.tray_icon.title = f"{TRAY_TITLE} - {'Activo' if self.engine.enabled else 'Silenciado'}"
         self.tray_icon.update_menu()
+        self._update_menu_labels()
+        self._draw_volume_dial()
         self._draw_volume_meter()
 
     def on_volume_change(self, raw_value: str) -> None:
@@ -776,6 +1377,46 @@ class BucklespringApp:
     def toggle_enabled(self) -> None:
         self.engine.toggle_enabled()
         self.refresh_ui()
+
+    def apply_hotkeys_from_gui(self) -> None:
+        candidate: dict[str, str] = {}
+        for action, _label, _description, _default in HOTKEY_FIELDS:
+            normalized = normalize_hotkey(self.hotkey_entry_vars[action].get())
+            if normalized is None:
+                self.hotkey_feedback_var.set(f"{HOTKEY_LABELS[action]} requiere un atajo valido.")
+                self.hotkey_feedback_label.configure(fg=ACCENT_RED)
+                return
+            candidate[action] = normalized
+
+        try:
+            self._apply_hotkeys(candidate, persist=True)
+        except Exception as exc:
+            self.hotkey_feedback_var.set(f"No se pudieron aplicar los atajos: {exc}")
+            self.hotkey_feedback_label.configure(fg=ACCENT_RED)
+            self._sync_hotkey_entries()
+            return
+
+        self.hotkey_feedback_var.set(f"Hotkeys applied and saved in {resolve_config_path().name}.")
+        self.hotkey_feedback_label.configure(fg=ACCENT_GREEN)
+        self._sync_hotkey_entries()
+        self.refresh_ui()
+
+    def reset_hotkeys_to_defaults(self) -> None:
+        try:
+            self._apply_hotkeys(dict(DEFAULT_HOTKEYS), persist=True)
+        except Exception as exc:
+            self.hotkey_feedback_var.set(f"No se pudieron restaurar los atajos por defecto: {exc}")
+            self.hotkey_feedback_label.configure(fg=ACCENT_RED)
+            return
+
+        self.hotkey_feedback_var.set("Default hotkeys restored.")
+        self.hotkey_feedback_label.configure(fg=ACCENT_GREEN)
+        self._sync_hotkey_entries()
+        self.refresh_ui()
+
+    def _sync_hotkey_entries(self) -> None:
+        for action in self.hotkey_entry_vars:
+            self.hotkey_entry_vars[action].set(format_hotkey(self.engine.hotkeys[action]))
 
     def show_window(self) -> None:
         self.root.deiconify()
@@ -805,6 +1446,9 @@ class BucklespringApp:
 
     def _hotkey_volume_down(self) -> None:
         self.root.after(0, lambda: self._set_volume_and_refresh(self.engine.adjust_volume(-VOLUME_STEP)))
+
+    def _hotkey_hide_window(self) -> None:
+        self.root.after(0, self.hide_window)
 
     def _hotkey_exit(self) -> None:
         self.root.after(0, self.exit_application)

@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 build/
 dist/
+config.json
 Bucklespring.exe_extracted/
 BucklespringV1.exe
 bucklespring_gui.png

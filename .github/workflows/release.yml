@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-release:
     runs-on: windows-latest
@@ -36,35 +40,61 @@ jobs:
           $version = python -c "from version import APP_VERSION; print(APP_VERSION)"
           "version=$version" >> $env:GITHUB_OUTPUT
 
+      - name: Extract release notes
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          @'
+from pathlib import Path
+import re
+import sys
+
+version = sys.argv[1]
+changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+pattern = rf"(?ms)^##\s+{re.escape(version)}\b.*?\n(.*?)(?=^##\s+|\Z)"
+match = re.search(pattern, changelog)
+if not match:
+    raise SystemExit(f"Could not find changelog entry for {version}")
+Path("release_notes.md").write_text(match.group(1).strip() + "\n", encoding="utf-8")
+'@ | python - $version
+
       - name: Build executable
         shell: pwsh
         run: |
           $env:PYGAME_HIDE_SUPPORT_PROMPT = "1"
-          pyinstaller --noconfirm --clean --onefile --windowed --name Bucklespring --icon bucklespring.ico --version-file .\file_version_info.txt --distpath . --workpath build --specpath . --add-data "audios;audios" --add-data "bucklespring.ico;." --hidden-import pystray._win32 --exclude-module pygame.tests --exclude-module pygame.examples .\bucklespring.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name Bucklespring --icon bucklespring.ico --version-file .\file_version_info.txt --distpath . --workpath build --specpath . --add-data "audios;audios" --add-data "bucklespring.ico;." --hidden-import pystray._win32 --exclude-module pygame.tests --exclude-module pygame.examples .\bucklespring.py
 
-      - name: Create and push tag
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bucklespring-${{ steps.version.outputs.version }}
+          path: Bucklespring.exe
+          if-no-files-found: error
+
+      - name: Ensure version tag exists on HEAD
         shell: pwsh
         run: |
+          git fetch --tags --force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           $version = "${{ steps.version.outputs.version }}"
-          $existing = git tag --list $version
-          if (-not $existing) {
-            git tag $version
+          $headCommit = (git rev-parse HEAD).Trim()
+          $tagCommit = (git rev-list -n 1 $version 2>$null)
+          if ([string]::IsNullOrWhiteSpace($tagCommit)) {
+            git tag -a $version -m "Release $version"
             git push origin $version
+            Write-Host "Created and pushed tag $version."
+          } elseif ($tagCommit.Trim() -ne $headCommit) {
+            throw "Tag $version already exists on $($tagCommit.Trim()) instead of HEAD $headCommit."
           } else {
-            Write-Host "Tag $version already exists."
+            Write-Host "Tag $version already points to HEAD."
           }
 
       - name: Create or update GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          gh release view $version *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $version .\Bucklespring.exe --clobber
-          } else {
-            gh release create $version .\Bucklespring.exe --title $version --notes "Automated release for $version"
-          }
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          files: Bucklespring.exe
+          fail_on_unmatched_files: true
