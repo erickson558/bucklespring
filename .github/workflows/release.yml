@@ -45,18 +45,18 @@ jobs:
         run: |
           $version = "${{ steps.version.outputs.version }}"
           @'
-from pathlib import Path
-import re
-import sys
+          from pathlib import Path
+          import re
+          import sys
 
-version = sys.argv[1]
-changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
-pattern = rf"(?ms)^##\s+{re.escape(version)}\b.*?\n(.*?)(?=^##\s+|\Z)"
-match = re.search(pattern, changelog)
-if not match:
-    raise SystemExit(f"Could not find changelog entry for {version}")
-Path("release_notes.md").write_text(match.group(1).strip() + "\n", encoding="utf-8")
-'@ | python - $version
+          version = sys.argv[1]
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = rf"(?ms)^##\s+{re.escape(version)}\b.*?\n(.*?)(?=^##\s+|\Z)"
+          match = re.search(pattern, changelog)
+          if not match:
+              raise SystemExit(f"Could not find changelog entry for {version}")
+          Path("release_notes.md").write_text(match.group(1).strip() + "\n", encoding="utf-8")
+          '@ | python - $version
 
       - name: Build executable
         shell: pwsh

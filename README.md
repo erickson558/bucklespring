@@ -4,7 +4,7 @@ Bucklespring reproduce sonidos mecánicos de teclado en Windows usando un hook g
 
 ## Versión actual
 
-`V1.4.0`
+`V1.4.1`
 
 El proyecto usa versionado `Vx.x.x` con criterio semántico:
 - `major`: cambios incompatibles.
@@ -31,6 +31,7 @@ El proyecto usa versionado `Vx.x.x` con criterio semántico:
 
 ## Cambios recientes
 
+- `V1.4.1`: corrección del workflow de release para que el tag y el GitHub Release se generen correctamente a partir de `main`.
 - `V1.4.0`: barra de menús con About, laboratorio de captura `Fn`, pipeline de audio no bloqueante y versión visible en más puntos de la GUI.
 - `V1.3.0`: dial interactivo, hotkeys configurables con `config.json`, salida segura al tray y rango de volumen 0-100%.
 - `V1.2.0`: rediseño futurista de la GUI, panel de volumen visual tipo matriz y mejoras estéticas del panel residente.

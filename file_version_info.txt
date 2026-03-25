@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 4, 0, 0),
-    prodvers=(1, 4, 0, 0),
+    filevers=(1, 4, 1, 0),
+    prodvers=(1, 4, 1, 0),
     mask=0x3F,
     flags=0x0,
     OS=0x40004,
@@ -17,12 +17,12 @@ VSVersionInfo(
           [
             StringStruct("CompanyName", "Synyster Rick"),
             StringStruct("FileDescription", "Bucklespring system tray keyboard sound app"),
-            StringStruct("FileVersion", "V1.4.0"),
+            StringStruct("FileVersion", "V1.4.1"),
             StringStruct("InternalName", "Bucklespring"),
             StringStruct("LegalCopyright", "Copyright (c) 2026 Synyster Rick. Licensed under Apache License 2.0."),
             StringStruct("OriginalFilename", "Bucklespring.exe"),
             StringStruct("ProductName", "Bucklespring"),
-            StringStruct("ProductVersion", "V1.4.0")
+            StringStruct("ProductVersion", "V1.4.1")
           ]
         )
       ]

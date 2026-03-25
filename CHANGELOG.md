@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.4.1 - 2026-03-24
+
+- Fixed the GitHub Actions workflow parsing so releases can be built and published from `main` without startup failure.
+- Rebuilt the executable and aligned the patch version across the app, README, tag metadata and embedded Windows version info.
+
 ## V1.4.0 - 2026-03-24
 
 - Added a Windows-style menu bar with About, tray actions and keyboard accelerators.
