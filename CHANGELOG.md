@@ -1,5 +1,14 @@
 # Changelog
 
+## V1.5.3 - 2026-04-21
+
+- Added `app.log` session log (`%LOCALAPPDATA%\Bucklespring\app.log`) that records startup, normal shutdown, duplicate-instance blocks and unexpected mainloop errors for post-hibernation and post-crash diagnostics.
+- Improved single-instance guard: a second launch now attempts to bring the existing window to the foreground via Win32 `FindWindowW`/`ShowWindow`/`SetForegroundWindow`; if the window cannot be found (fully hidden in tray), a brief informative messagebox is shown instead of silently exiting.
+- Fixed `_set_volume_and_refresh` calling `save_settings()` twice per volume button press — `set_volume()`/`adjust_volume()` already persist settings internally; the wrapper now only calls `refresh_ui()`.
+- Added `bring_existing_instance_to_front()` Win32 helper function with full inline documentation.
+- Added `app_log_path()` and `write_app_log()` utilities alongside the existing `error_log_path()`/`write_error_log()` pair.
+- Wrapped `app.start()` in `main()` with a try/except to log unexpected mainloop errors to both `app.log` and `error.log`.
+
 ## V1.5.2 - 2026-04-20
 
 - Fixed silent startup crash caused by `Global\` mutex failing on standard Windows user accounts without `SeCreateGlobalPrivilege`; the guard now falls back to `Local\` and continues best-effort if both namespaces fail.

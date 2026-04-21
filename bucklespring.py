@@ -47,6 +47,7 @@ VOLUME_STEP = 0.05      # Incremento/decremento al pulsar los botones +/- 5%
 # ── Rutas y nombres de archivo ──────────────────────────────────────────────
 CONFIG_FILE_NAME = "config.json"        # Nombre del archivo de configuración persistente
 ERROR_LOG_FILE_NAME = "error.log"       # Log de errores para diagnóstico (sin consola en .exe)
+APP_LOG_FILE_NAME   = "app.log"         # Log de sesión: arranca, cierra, hibernación
 LEGACY_CONFIG_FILE = Path.home() / ".keyboard_sounds_config.json"  # Ruta heredada de versiones anteriores
 
 # ── Constantes de la aplicación ─────────────────────────────────────────────
@@ -321,6 +322,34 @@ KEY_NAME_FALLBACKS = {
 }
 
 
+def bring_existing_instance_to_front() -> bool:
+    """
+    Busca la ventana de la instancia ya en ejecución por su título y la trae al frente.
+    Útil cuando el usuario intenta abrir el exe y ya hay una instancia corriendo (quizá en tray).
+
+    Secuencia Win32:
+      1. FindWindowW — obtiene el HWND por título de ventana.
+      2. ShowWindow(SW_SHOW=5)   — hace visible la ventana si estaba oculta/retirada.
+      3. ShowWindow(SW_RESTORE=9) — restaura si estaba minimizada.
+      4. SetForegroundWindow     — le da el foco activo.
+
+    Retorna True si se encontró la ventana, False si no.
+    """
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        # Busca la ventana principal de tkinter por su título (APP_NAME + " " + APP_VERSION)
+        window_title = f"{APP_NAME} {APP_VERSION}"
+        hwnd = user32.FindWindowW(None, window_title)
+        if hwnd:
+            user32.ShowWindow(hwnd, 5)   # SW_SHOW: muestra la ventana
+            user32.ShowWindow(hwnd, 9)   # SW_RESTORE: restaura si minimizada
+            user32.SetForegroundWindow(hwnd)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bucklespring keyboard sound app")
     parser.add_argument("--version", action="store_true", help="Print the current version and exit")
@@ -371,6 +400,30 @@ def write_error_log(message: str) -> None:
             f.write(f"[{timestamp}] {message}\n")
     except Exception:
         pass  # No se puede hacer nada si el log también falla
+
+
+def app_log_path() -> Path:
+    """Ruta del log de sesión en %LOCALAPPDATA%\\Bucklespring\\app.log."""
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    base_dir = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+    return base_dir / APP_NAME / APP_LOG_FILE_NAME
+
+
+def write_app_log(message: str) -> None:
+    """
+    Escribe un evento de sesión al log de app (arranque, apagado, hibernación).
+    Se llama desde el hilo principal — no requiere lock.
+    Silencia cualquier fallo de I/O para no interrumpir la ejecución normal.
+    """
+    try:
+        log = app_log_path()
+        log.parent.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with log.open("a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] {message}\n")
+    except Exception:
+        pass  # Si el log falla, no interrumpir la ejecución
 
 
 def iter_config_paths(*preferred_paths: Path) -> tuple[Path, ...]:
@@ -2050,8 +2103,10 @@ class BucklespringApp:
         self.root.after(0, self.exit_application)
 
     def _set_volume_and_refresh(self, value: float) -> None:
-        self.engine.volume = value
-        self.engine.save_settings()
+        # 'value' es el retorno de engine.set_volume() o adjust_volume(), que ya
+        # actualizaron self.engine.volume y llamaron save_settings() internamente.
+        # Solo necesitamos refrescar la UI con el nuevo valor.
+        del value  # ya aplicado por el motor — solo refrescar la UI
         self.refresh_ui()
 
     def start(self) -> None:
@@ -2094,6 +2149,9 @@ class BucklespringApp:
         # Apagar motor de audio y desregistrar hooks de teclado
         self.engine.shutdown()
 
+        # Registrar el cierre normal en el log de sesión antes de destruir la ventana
+        write_app_log(f"SESSION END — {APP_NAME} {APP_VERSION} cerrado correctamente")
+
         # Destruir la ventana — esto hace que mainloop() retorne en start()
         self.root.destroy()
 
@@ -2128,10 +2186,30 @@ def main() -> int:
         acquired = True
 
     if not acquired:
-        # Ya hay una instancia corriendo — salir silenciosamente
+        # Ya hay una instancia corriendo.
+        # Intentar traer la ventana existente al frente (puede estar oculta en el tray).
+        brought = bring_existing_instance_to_front()
+        if not brought:
+            # Si no se pudo encontrar la ventana (ej: minimizada al tray sin HWND visible),
+            # mostrar un aviso informativo para que el usuario sepa que ya está activo.
+            try:
+                _r = tk.Tk()
+                _r.withdraw()
+                messagebox.showinfo(
+                    APP_NAME,
+                    f"{APP_NAME} ya está activo en la bandeja del sistema.\n"
+                    "Haz doble clic en el icono del tray para abrirlo.",
+                )
+                _r.destroy()
+            except Exception:
+                pass
+        write_app_log(f"DUPLICATE INSTANCE blocked — {APP_NAME} {APP_VERSION} ya en ejecución")
         return 0
 
     atexit.register(guard.release)
+
+    # Registrar el arranque de sesión antes de construir la GUI
+    write_app_log(f"SESSION START — {APP_NAME} {APP_VERSION}")
 
     # FIX: Envolver la construcción de la app en try/except para mostrar el error
     # al usuario en lugar de crashear silenciosamente (crítico en modo .exe sin consola).
@@ -2159,6 +2237,10 @@ def main() -> int:
     # Iniciar el mainloop — bloquea hasta que el usuario cierre la app
     try:
         app.start()
+    except Exception as exc:
+        # Error inesperado durante el mainloop (muy raro pero registrado)
+        write_app_log(f"UNEXPECTED ERROR in mainloop: {exc}\n{traceback.format_exc()}")
+        write_error_log(f"Unexpected mainloop error: {exc}\n{traceback.format_exc()}")
     finally:
         guard.release()
     return 0
