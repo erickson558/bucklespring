@@ -1,5 +1,15 @@
 # Changelog
 
+## V1.5.2 - 2026-04-20
+
+- Fixed silent startup crash caused by `Global\` mutex failing on standard Windows user accounts without `SeCreateGlobalPrivilege`; the guard now falls back to `Local\` and continues best-effort if both namespaces fail.
+- Fixed `keyboard.hook()` being called outside any `try/except` block; an exception here previously terminated `__init__` silently in the windowless `.exe`.
+- Wrapped `BucklespringApp()` construction in `main()` with a full `try/except` that shows a tkinter error dialog and writes a detailed traceback to `%LOCALAPPDATA%\Bucklespring\error.log`.
+- Added `write_error_log()` utility and `error_log_path()` so all unhandled exceptions are persisted for post-mortem diagnostics when running without a console.
+- Fixed `_drain_diagnostic_queue` after-loop ID not being tracked; the loop can now be properly cancelled in `exit_application()` to avoid `TclError` on a destroyed window.
+- Added `_tray_started` flag so `refresh_ui()` only calls `tray_icon.update_menu()` and updates `.title` after `run_detached()` has been called.
+- Added comprehensive inline and docstring comments throughout all classes and methods.
+
 ## V1.5.1 - 2026-03-25
 
 - Hardened the audio worker so a missing or corrupted WAV no longer kills resident playback for the whole session.

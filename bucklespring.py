@@ -1,3 +1,13 @@
+"""
+Bucklespring — Teclado mecánico residente para Windows.
+
+Arquitectura principal:
+  SoundEngine  — Motor de audio (pygame + hook de teclado + worker async).
+  BucklespringApp — GUI tkinter + bandeja del sistema (pystray) + atajos globales.
+  SingleInstanceGuard — Mutex de instancia única via Win32 API.
+  main()       — Punto de entrada: guard → construcción → mainloop.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -10,6 +20,7 @@ import queue
 import sys
 import threading
 import tkinter as tk
+import traceback  # Para capturar stack traces completos en logs de error
 import warnings
 from dataclasses import dataclass
 from datetime import date
@@ -27,16 +38,28 @@ from PIL import Image, ImageDraw
 from version import APP_AUTHOR, APP_LICENSE, APP_NAME, APP_VERSION
 
 
-DEFAULT_VOLUME = 0.10
-MIN_VOLUME = 0.0
-MAX_VOLUME = 1.0
-VOLUME_STEP = 0.05
-CONFIG_FILE_NAME = "config.json"
-LEGACY_CONFIG_FILE = Path.home() / ".keyboard_sounds_config.json"
-TRAY_TITLE = f"{APP_NAME} {APP_VERSION}"
-UNKNOWN_STEM = "ff"
-ICON_FILE_NAME = "bucklespring.ico"
-MUTEX_NAME = f"Global\\{APP_NAME}-{APP_VERSION}"
+# ── Parámetros de volumen ───────────────────────────────────────────────────
+DEFAULT_VOLUME = 0.10   # Volumen inicial al no existir config guardada
+MIN_VOLUME = 0.0        # Límite inferior del rango de volumen
+MAX_VOLUME = 1.0        # Límite superior del rango de volumen
+VOLUME_STEP = 0.05      # Incremento/decremento al pulsar los botones +/- 5%
+
+# ── Rutas y nombres de archivo ──────────────────────────────────────────────
+CONFIG_FILE_NAME = "config.json"        # Nombre del archivo de configuración persistente
+ERROR_LOG_FILE_NAME = "error.log"       # Log de errores para diagnóstico (sin consola en .exe)
+LEGACY_CONFIG_FILE = Path.home() / ".keyboard_sounds_config.json"  # Ruta heredada de versiones anteriores
+
+# ── Constantes de la aplicación ─────────────────────────────────────────────
+TRAY_TITLE = f"{APP_NAME} {APP_VERSION}"   # Título mostrado al pasar el cursor sobre el icono del tray
+UNKNOWN_STEM = "ff"                        # Stem de fallback cuando una tecla no tiene mapeo dedicado
+ICON_FILE_NAME = "bucklespring.ico"        # Nombre del icono usado en la ventana y el tray
+
+# ── Mutex de instancia única ────────────────────────────────────────────────
+# FIX: Se intentan dos namespaces. "Global\" requiere SeCreateGlobalPrivilege
+# (no siempre disponible en usuarios estándar). Si falla, se usa "Local\".
+MUTEX_NAME_GLOBAL = f"Global\\{APP_NAME}-{APP_VERSION}"
+MUTEX_NAME_LOCAL  = f"Local\\{APP_NAME}-{APP_VERSION}"
+MUTEX_NAME = MUTEX_NAME_GLOBAL  # Alias usado por el guard; se reemplaza dinámicamente si es necesario
 BACKGROUND_LAYER_TOP = "#07161d"
 BACKGROUND_LAYER_BOTTOM = "#03090d"
 PANEL_COLOR = "#0a1c24"
@@ -305,25 +328,49 @@ def parse_args() -> argparse.Namespace:
 
 
 def bundle_root() -> Path:
+    """Devuelve la raíz del bundle PyInstaller (_MEIPASS) o el directorio del script."""
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent
 
 
 def app_root() -> Path:
+    """Devuelve el directorio del ejecutable (o del script en desarrollo)."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
 
 
 def resolve_config_path() -> Path:
+    """Ruta primaria del archivo de configuración (misma carpeta que el .exe)."""
     return app_root() / CONFIG_FILE_NAME
 
 
 def fallback_config_path() -> Path:
+    """Ruta de respaldo en %LOCALAPPDATA%\\Bucklespring\\config.json."""
     local_appdata = os.environ.get("LOCALAPPDATA")
     base_dir = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
     return base_dir / APP_NAME / CONFIG_FILE_NAME
+
+
+def error_log_path() -> Path:
+    """Ruta del log de errores en %LOCALAPPDATA%\\Bucklespring\\error.log."""
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    base_dir = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+    return base_dir / APP_NAME / ERROR_LOG_FILE_NAME
+
+
+def write_error_log(message: str) -> None:
+    """Escribe un error al archivo de log cuando no hay consola disponible (modo .exe)."""
+    try:
+        log = error_log_path()
+        log.parent.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with log.open("a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] {message}\n")
+    except Exception:
+        pass  # No se puede hacer nada si el log también falla
 
 
 def iter_config_paths(*preferred_paths: Path) -> tuple[Path, ...]:
@@ -396,12 +443,16 @@ class KeyEventSnapshot:
     event_type: str
 
 
+# ── SingleInstanceGuard ──────────────────────────────────────────────────────
+# Previene que se abran múltiples instancias simultáneas de la aplicación.
+# Usa un Mutex nombrado de Win32 via ctypes para garantizar exclusividad.
 class SingleInstanceGuard:
-    ERROR_ALREADY_EXISTS = 183
+    ERROR_ALREADY_EXISTS = 183  # Código Win32: el mutex ya existe en otra instancia
 
     def __init__(self, name: str) -> None:
         self.name = name
         self.handle = None
+        # Cargamos kernel32 con use_last_error=True para poder leer GetLastError()
         self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self.kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
         self.kernel32.CreateMutexW.restype = ctypes.c_void_p
@@ -409,21 +460,44 @@ class SingleInstanceGuard:
         self.kernel32.CloseHandle.restype = ctypes.c_bool
 
     def acquire(self) -> bool:
+        """
+        Crea o abre el mutex.
+        FIX: El prefijo 'Global\\' requiere SeCreateGlobalPrivilege. En usuarios
+        estándar de Windows (sin privilegio de sesión global) la llamada puede
+        fallar devolviendo NULL. Si eso ocurre, se reintenta con 'Local\\'.
+        Si ambos fallan, se permite la ejecución (el guard es best-effort).
+        """
+        # Primer intento: namespace global (visible en todas las sesiones)
         self.handle = self.kernel32.CreateMutexW(None, False, self.name)
         if not self.handle:
-            raise OSError("Could not create the single-instance mutex.")
+            # Segundo intento: namespace local (solo sesión del usuario actual)
+            local_name = self.name.replace("Global\\", "Local\\", 1)
+            self.name = local_name
+            self.handle = self.kernel32.CreateMutexW(None, False, local_name)
+            if not self.handle:
+                # Ningún namespace funcionó — continuamos sin guard (mejor que crashear)
+                return True
+        # ERROR_ALREADY_EXISTS (183) significa que la instancia ya está corriendo
         return ctypes.get_last_error() != self.ERROR_ALREADY_EXISTS
 
     def release(self) -> None:
+        """Libera el mutex para que otras instancias puedan arrancar."""
         if self.handle:
             self.kernel32.CloseHandle(self.handle)
             self.handle = None
 
 
+# ── SoundEngine ──────────────────────────────────────────────────────────────
+# Maneja todo lo relacionado con audio y el hook de teclado:
+#   - Inicializa pygame.mixer para reproducción de WAV.
+#   - Descubre y cachea los archivos de sonido en la carpeta "audios/".
+#   - Registra el hook global de teclado para capturar pulsaciones.
+#   - Corre un worker thread asíncrono para reproducir audio sin bloquear la GUI.
+#   - Persiste configuración (volumen, estado, idioma, atajos) en config.json.
 class SoundEngine:
     def __init__(self) -> None:
-        self.audio_dir = resolve_audio_dir()
-        self.config_path = resolve_config_path()
+        self.audio_dir = resolve_audio_dir()     # Directorio de archivos WAV
+        self.config_path = resolve_config_path() # Ruta activa de configuración
         self.volume = DEFAULT_VOLUME
         self.enabled = True
         self.language = DEFAULT_LANGUAGE
@@ -445,15 +519,22 @@ class SoundEngine:
         self.audio_worker.start()
 
     def _setup_mixer(self) -> None:
+        """Inicializa pygame.mixer con 64 canales. Si falla, la app sigue sin audio."""
         try:
-            pygame.mixer.pre_init(44100, -16, 2, 256)
+            pygame.mixer.pre_init(44100, -16, 2, 256)  # 44.1kHz, 16-bit stereo, buffer 256
             pygame.mixer.init()
-            pygame.mixer.set_num_channels(64)
+            pygame.mixer.set_num_channels(64)  # Canales simultáneos máximos
             self.mixer_ready = True
         except pygame.error:
+            # Si el driver de audio no está disponible, la app sigue funcionando sin sonido
             self.mixer_ready = False
 
     def _discover_sound_files(self) -> dict[str, dict[str, Path]]:
+        """
+        Escanea la carpeta de audios y construye un diccionario:
+          { "stem_hex": { "press": Path, "release": Path }, ... }
+        Los archivos siguen el formato: "<scancode_hex>-0.wav" (press) y "<scancode_hex>-1.wav" (release).
+        """
         sound_files: dict[str, dict[str, Path]] = {}
         if not self.audio_dir.exists():
             return sound_files
@@ -465,18 +546,25 @@ class SoundEngine:
             stem, suffix = parts
             if suffix not in {"0", "1"}:
                 continue
+            # "0" = press (tecla presionada), "1" = release (tecla liberada)
             sound_files.setdefault(stem.lower(), {})["press" if suffix == "0" else "release"] = path
         return sound_files
 
     def _load_sound(self, path: Path) -> pygame.mixer.Sound | None:
+        """
+        Carga y cachea un archivo WAV. Si el archivo falla, lo marca en
+        'failed_sound_paths' para no intentar cargarlo de nuevo en el futuro.
+        Thread-safe mediante cache_lock.
+        """
         with self.cache_lock:
             if path in self.failed_sound_paths:
-                return None
+                return None  # Ya falló antes — no reintentar
             sound = self.sound_cache.get(path)
             if sound is None:
                 try:
                     sound = pygame.mixer.Sound(str(path))
                 except Exception as exc:
+                    # El WAV puede estar corrupto o en formato incompatible
                     self.failed_sound_paths.add(path)
                     self.last_audio_error = f"{path.name}: {exc}"
                     return None
@@ -502,12 +590,17 @@ class SoundEngine:
         return True
 
     def _audio_worker_loop(self) -> None:
+        """
+        Worker thread que consume la cola de eventos de teclado y reproduce sonidos.
+        Corre en su propio thread para no bloquear el hilo principal de la GUI.
+        Un 'None' en la cola es la señal de parada (poison pill pattern).
+        """
         while not self.worker_stop.is_set():
             snapshot = self.audio_queue.get()
             if snapshot is None:
-                break
+                break  # Señal de parada recibida — terminar el worker limpiamente
             try:
-                # Keep the resident worker alive even if a single asset is missing or corrupted.
+                # El worker sobrevive a WAVs corruptos/faltantes gracias al try/except interno
                 self.play_for_event(snapshot)
             except Exception as exc:
                 self.last_audio_error = str(exc)
@@ -657,37 +750,59 @@ class SoundEngine:
         self.save_settings()
 
     def handle_key_event(self, event: keyboard.KeyboardEvent) -> None:
+        """
+        Callback del hook de teclado. Llamado desde el thread interno de la librería 'keyboard'.
+        - Ignora repeticiones automáticas (key held down) usando el set pressed_keys.
+        - Ignora releases huérfanos (eventos 'up' sin 'down' previo) para evitar clicks fantasma.
+        - Enqueue el snapshot al worker de audio y notifica a los observadores (Fn Lab).
+        """
         pressed_key = (getattr(event, "scan_code", None), normalize_name(event.name), "down")
         should_enqueue_audio = False
 
         if event.event_type == "down":
             if pressed_key in self.pressed_keys:
-                return
+                return  # Tecla ya marcada como presionada — ignorar repetición automática
             self.pressed_keys.add(pressed_key)
             should_enqueue_audio = True
         elif event.event_type == "up":
-            # Ignore orphaned releases for audio so startup and focus changes do not create phantom clicks.
+            # Solo reproducir release si hubo un down previo registrado (evita clics fantasma al arrancar)
             should_enqueue_audio = pressed_key in self.pressed_keys
             self.pressed_keys.discard(pressed_key)
 
         snapshot = self._snapshot_from_event(event)
-        self._emit_event(snapshot)
+        self._emit_event(snapshot)  # Notificar al Fn Capture Lab si está abierto
         if should_enqueue_audio:
-            self.audio_queue.put(snapshot)
+            self.audio_queue.put(snapshot)  # Enviar al worker async para reproducción
 
     def shutdown(self) -> None:
-        keyboard.unhook_all()
-        keyboard.clear_all_hotkeys()
-        self.worker_stop.set()
-        self.audio_queue.put(None)
+        """
+        Limpieza ordenada al cerrar la aplicación:
+        1. Elimina todos los hooks y atajos globales de teclado.
+        2. Detiene el worker de audio enviando la señal 'None' (poison pill).
+        3. Espera a que el worker termine (timeout 1s para no bloquear el exit).
+        4. Apaga pygame.mixer si estaba activo.
+        """
+        keyboard.unhook_all()          # Desregistra el hook de escucha del teclado
+        keyboard.clear_all_hotkeys()   # Elimina todos los atajos globales registrados
+        self.worker_stop.set()         # Señal de parada al worker thread
+        self.audio_queue.put(None)     # Poison pill para desbloquear queue.get() del worker
         if self.audio_worker.is_alive():
-            self.audio_worker.join(timeout=1)
+            self.audio_worker.join(timeout=1)  # Espera máximo 1 segundo
         if self.mixer_ready:
-            pygame.mixer.quit()
+            pygame.mixer.quit()        # Libera el dispositivo de audio
 
 
+# ── BucklespringApp ──────────────────────────────────────────────────────────
+# Clase principal que combina:
+#   - Ventana tkinter con diseño HUD futurista.
+#   - Icono residente en la bandeja del sistema (pystray).
+#   - Atajos globales de teclado configurables.
+#   - Dial de volumen interactivo y medidor visual de amplitud.
+#   - Barra de menús con soporte multi-idioma.
+#   - Ventana de diagnóstico "Fn Capture Lab".
 class BucklespringApp:
     def __init__(self) -> None:
+        # Motor de audio: inicializa pygame, descubre WAVs, carga config, arranca worker thread
         self.engine = SoundEngine()
         self.root = tk.Tk()
         self.root.title(f"{APP_NAME} {APP_VERSION}")
@@ -731,8 +846,13 @@ class BucklespringApp:
             "hide_window": self._hotkey_hide_window,
             "exit_application": self._hotkey_exit,
         }
-        self.scanline_y = 0
-        self.background_after_id: str | None = None
+        self.scanline_y = 0                            # Posición Y de la línea de escaneo animada
+        self.background_after_id: str | None = None   # ID del after de animación de fondo (para cancelarlo al salir)
+        # FIX: ID del after del drain de eventos diagnósticos — necesario para cancelarlo en exit_application()
+        self._drain_after_id: str | None = None
+        # FIX: Flag para saber si el tray icon ya fue iniciado con run_detached()
+        # update_menu() y title solo tienen efecto después de run_detached()
+        self._tray_started: bool = False
         self.diagnostic_events: queue.Queue[KeyEventSnapshot] = queue.Queue()
         self.fn_capture_window: tk.Toplevel | None = None
         self.fn_capture_text: scrolledtext.ScrolledText | None = None
@@ -1310,12 +1430,34 @@ class BucklespringApp:
         return button
 
     def _register_keyboard_hooks(self) -> None:
-        keyboard.hook(self.engine.handle_key_event)
+        """
+        Registra el hook global de teclado y los atajos configurables.
+
+        FIX: keyboard.hook() estaba fuera del try/except original. Si la librería
+        'keyboard' falla al instalar el hook (p.ej. por permisos o conflicto con
+        otro hook), lanzaba una excepción no capturada que crasheaba __init__
+        silenciosamente en el .exe (sin consola). Ahora ambas operaciones están
+        protegidas de forma independiente.
+        """
+        # Registrar el hook principal de escucha de teclas
+        try:
+            keyboard.hook(self.engine.handle_key_event)
+        except Exception as exc:
+            # Si el hook falla la app sigue corriendo pero sin reproducir sonidos
+            self.engine.last_audio_error = f"Keyboard hook failed: {exc}"
+            write_error_log(f"keyboard.hook() failed: {exc}\n{traceback.format_exc()}")
+
+        # Registrar los atajos globales (toggle, volumen, tray, exit)
         try:
             self._register_hotkeys(self.engine.hotkeys)
         except Exception:
+            # Si los hotkeys guardados son inválidos, restaurar los defaults y reintentar
             self.engine.hotkeys = dict(DEFAULT_HOTKEYS)
-            self._register_hotkeys(self.engine.hotkeys)
+            try:
+                self._register_hotkeys(self.engine.hotkeys)
+            except Exception as exc2:
+                # Si incluso los defaults fallan, continuar sin atajos
+                write_error_log(f"Hotkey registration failed: {exc2}\n{traceback.format_exc()}")
             self.engine.save_settings()
 
     def _register_hotkeys(self, hotkeys: dict[str, str]) -> None:
@@ -1350,6 +1492,13 @@ class BucklespringApp:
         self.diagnostic_events.put(snapshot)
 
     def _drain_diagnostic_queue(self) -> None:
+        """
+        Consume todos los eventos de diagnóstico pendientes y los escribe en el Fn Capture Lab.
+        Se reprograma cada 80ms via tkinter after().
+        FIX: El ID del after ahora se almacena en self._drain_after_id para poder
+        cancelarlo correctamente en exit_application() y evitar TclError al intentar
+        reprogramarse sobre una ventana ya destruida.
+        """
         while True:
             try:
                 snapshot = self.diagnostic_events.get_nowait()
@@ -1357,7 +1506,8 @@ class BucklespringApp:
                 break
             self._append_diagnostic_snapshot(snapshot)
 
-        self.root.after(80, self._drain_diagnostic_queue)
+        # Guardar el ID para poder cancelarlo durante el exit
+        self._drain_after_id = self.root.after(80, self._drain_diagnostic_queue)
 
     def _append_diagnostic_snapshot(self, snapshot: KeyEventSnapshot) -> None:
         if self.fn_capture_text is None or self.fn_capture_window is None:
@@ -1806,8 +1956,13 @@ class BucklespringApp:
             )
         )
         self.hotkey_feedback_var.set(self.tr(self.hotkey_feedback_key, **self.hotkey_feedback_kwargs))
-        self.tray_icon.title = f"{TRAY_TITLE} - {self.tr('tray_title_active') if self.engine.enabled else self.tr('tray_title_muted')}"
-        self.tray_icon.update_menu()
+        # FIX: Solo actualizar el tray si ya fue iniciado con run_detached().
+        # Llamar update_menu() o modificar .title antes de run_detached() es seguro
+        # en pystray 0.19.5 (verifica visible internamente), pero guardamos el flag
+        # para mayor claridad y compatibilidad con versiones futuras de pystray.
+        if self._tray_started:
+            self.tray_icon.title = f"{TRAY_TITLE} - {self.tr('tray_title_active') if self.engine.enabled else self.tr('tray_title_muted')}"
+            self.tray_icon.update_menu()
         self._update_menu_labels()
         self._draw_volume_dial()
         self._draw_volume_meter()
@@ -1900,34 +2055,108 @@ class BucklespringApp:
         self.refresh_ui()
 
     def start(self) -> None:
-        self.tray_icon.run_detached()
-        self.root.mainloop()
+        """
+        Punto de entrada al bucle principal de la aplicación.
+        run_detached() inicia el icono del tray en un thread separado.
+        mainloop() bloquea hasta que la ventana sea destruida (exit_application).
+        """
+        self.tray_icon.run_detached()   # Inicia el tray en background thread
+        self._tray_started = True       # A partir de aquí, refresh_ui puede actualizar el tray
+        self.refresh_ui()               # Primera actualización real del tray con icono activo
+        self.root.mainloop()            # Bucle de eventos principal de tkinter
 
     def exit_application(self) -> None:
+        """
+        Cierre ordenado de la aplicación:
+        1. Cancela los loops de after() para evitar TclError sobre ventana destruida.
+        2. Detiene el icono del tray.
+        3. Apaga el motor de audio (unhook, worker, pygame).
+        4. Destruye la ventana principal (termina mainloop).
+        FIX: Se cancela _drain_after_id además de background_after_id para evitar
+        que el drain loop intente reprogramarse sobre la ventana ya destruida.
+        """
+        # Cancelar el loop de animación del fondo
         if self.background_after_id:
             self.root.after_cancel(self.background_after_id)
             self.background_after_id = None
+
+        # FIX: Cancelar el loop de drenaje de eventos diagnósticos
+        if self._drain_after_id:
+            self.root.after_cancel(self._drain_after_id)
+            self._drain_after_id = None
+
+        # Detener el icono del tray (puede fallar si el tray no se inició)
         try:
             self.tray_icon.stop()
         except Exception:
             pass
+
+        # Apagar motor de audio y desregistrar hooks de teclado
         self.engine.shutdown()
+
+        # Destruir la ventana — esto hace que mainloop() retorne en start()
         self.root.destroy()
 
 
 def main() -> int:
+    """
+    Punto de entrada principal de la aplicación.
+
+    Flujo:
+      1. Parsea argumentos de línea de comandos (--version).
+      2. Crea el SingleInstanceGuard (mutex) para evitar múltiples instancias.
+      3. Construye BucklespringApp (motor + GUI + tray).
+      4. Inicia el mainloop.
+      5. Limpia el guard al salir.
+
+    FIX: BucklespringApp() ahora está protegido con try/except. En el .exe sin
+    consola, cualquier excepción en __init__ terminaba el proceso silenciosamente.
+    Ahora: muestra un messagebox de error y escribe al log de diagnóstico.
+    """
     args = parse_args()
     if args.version:
         print(APP_VERSION)
         return 0
 
+    # Proteger guard.acquire() — puede lanzar OSError si el Win32 mutex falla
     guard = SingleInstanceGuard(MUTEX_NAME)
-    if not guard.acquire():
+    try:
+        acquired = guard.acquire()
+    except OSError as exc:
+        # No se pudo crear el mutex — se continúa sin protección de instancia única
+        write_error_log(f"SingleInstanceGuard.acquire() failed: {exc}")
+        acquired = True
+
+    if not acquired:
+        # Ya hay una instancia corriendo — salir silenciosamente
         return 0
 
     atexit.register(guard.release)
 
-    app = BucklespringApp()
+    # FIX: Envolver la construcción de la app en try/except para mostrar el error
+    # al usuario en lugar de crashear silenciosamente (crítico en modo .exe sin consola).
+    try:
+        app = BucklespringApp()
+    except Exception as exc:
+        error_detail = traceback.format_exc()
+        write_error_log(f"BucklespringApp.__init__ failed:\n{error_detail}")
+        # Mostrar el error al usuario con un messagebox de tkinter básico
+        try:
+            _err_root = tk.Tk()
+            _err_root.withdraw()
+            messagebox.showerror(
+                f"{APP_NAME} — Error de inicio",
+                f"No se pudo iniciar la aplicación.\n\n"
+                f"Error: {exc}\n\n"
+                f"Detalles guardados en:\n{error_log_path()}",
+            )
+            _err_root.destroy()
+        except Exception:
+            pass
+        guard.release()
+        return 1
+
+    # Iniciar el mainloop — bloquea hasta que el usuario cierre la app
     try:
         app.start()
     finally:
