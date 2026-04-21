@@ -1764,6 +1764,13 @@ class BucklespringApp:
         return image
 
     def _on_unmap(self, _event: tk.Event) -> None:
+        # FIX: Ignorar eventos Unmap de widgets hijos — solo reaccionar cuando es la ventana raíz.
+        # tkinter propaga <Unmap> hacia arriba desde cualquier subwidget, lo que causaba
+        # invocaciones innecesarias de hide_window() por cada panel o frame desmapeado.
+        if _event.widget is not self.root:
+            return
+        # Cuando el usuario minimiza con el botón nativo de Windows (no con nuestro botón),
+        # el estado pasa a "iconic" — lo interceptamos para mandarlo al tray en vez de minimizar.
         if self.root.state() == "iconic":
             self.hide_window()
 
@@ -1809,6 +1816,12 @@ class BucklespringApp:
         )
 
     def _animate_background(self) -> None:
+        # FIX: Cuando la ventana está oculta (withdraw), no tiene sentido redibujar el canvas.
+        # Reducimos la frecuencia de reprogramación a 500ms para ahorrar CPU mientras la app
+        # reside en el tray sin que el usuario vea la animación.
+        if self.root.state() == "withdrawn":
+            self.background_after_id = self.root.after(500, self._animate_background)
+            return
         width = max(self.root.winfo_width(), 860)
         height = max(self.root.winfo_height(), 560)
         travel = max(height - 120, 1)
@@ -2113,11 +2126,19 @@ class BucklespringApp:
         """
         Punto de entrada al bucle principal de la aplicación.
         run_detached() inicia el icono del tray en un thread separado.
+        La ventana arranca oculta (withdraw) para que la app inicie minimizada al tray.
         mainloop() bloquea hasta que la ventana sea destruida (exit_application).
         """
         self.tray_icon.run_detached()   # Inicia el tray en background thread
         self._tray_started = True       # A partir de aquí, refresh_ui puede actualizar el tray
-        self.refresh_ui()               # Primera actualización real del tray con icono activo
+
+        # FEATURE: Iniciar minimizado al tray.
+        # withdraw() oculta la ventana antes de que mainloop() la pinte en pantalla.
+        # El usuario puede recuperarla haciendo doble clic en el icono del tray
+        # o usando el hotkey SEND TO TRAY (ctrl+alt+h).
+        self.root.withdraw()
+
+        self.refresh_ui()               # Primera actualización del tray con estado correcto
         self.root.mainloop()            # Bucle de eventos principal de tkinter
 
     def exit_application(self) -> None:

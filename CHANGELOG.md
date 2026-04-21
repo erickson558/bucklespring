@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.5.4 - 2026-04-21
+
+- Added start-minimized-to-tray behavior: the main window is now hidden (`withdraw`) before `mainloop()` starts so the app boots silently into the tray without flashing the GUI on screen. Users open the window by double-clicking the tray icon or using the `SEND TO TRAY` hotkey (Ctrl+Alt+H).
+- Optimized background animation loop: `_animate_background()` now detects when the window is in `"withdrawn"` state and re-schedules itself at 500 ms instead of 90 ms, eliminating unnecessary canvas draw calls while the app lives in the tray.
+- Fixed spurious `_on_unmap` invocations caused by tkinter propagating `<Unmap>` events from child widgets up to the root binding; added an early-exit guard (`_event.widget is not self.root`) so the handler only acts on the root window's own unmap events.
+
 ## V1.5.3 - 2026-04-21
 
 - Added `app.log` session log (`%LOCALAPPDATA%\Bucklespring\app.log`) that records startup, normal shutdown, duplicate-instance blocks and unexpected mainloop errors for post-hibernation and post-crash diagnostics.
