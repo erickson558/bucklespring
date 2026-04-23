@@ -24,7 +24,7 @@ import traceback  # Para capturar stack traces completos en logs de error
 import warnings
 import webbrowser  # Abrir el enlace de donación en el navegador predeterminado
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime  # datetime usado en todos los write_*_log()
 from pathlib import Path
 from tkinter import messagebox, scrolledtext
 from typing import Callable
@@ -401,7 +401,6 @@ def write_error_log(message: str) -> None:
     try:
         log = error_log_path()
         log.parent.mkdir(parents=True, exist_ok=True)
-        from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with log.open("a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] {message}\n")
@@ -425,7 +424,6 @@ def write_app_log(message: str) -> None:
     try:
         log = app_log_path()
         log.parent.mkdir(parents=True, exist_ok=True)
-        from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with log.open("a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] {message}\n")
@@ -449,7 +447,6 @@ def write_debug_log(message: str) -> None:
     try:
         log = debug_log_path()
         log.parent.mkdir(parents=True, exist_ok=True)
-        from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         thread_name = threading.current_thread().name
         with log.open("a", encoding="utf-8") as f:
@@ -610,8 +607,9 @@ class SoundEngine:
             pygame.mixer.init()
             pygame.mixer.set_num_channels(64)  # Canales simultáneos máximos
             self.mixer_ready = True
-        except pygame.error:
-            # Si el driver de audio no está disponible, la app sigue funcionando sin sonido
+        except Exception:
+            # Captura pygame.error, OSError, RuntimeError y cualquier otra excepción
+            # del driver de audio — la app continúa funcionando sin sonido
             self.mixer_ready = False
 
     def _discover_sound_files(self) -> dict[str, dict[str, Path]]:
@@ -982,10 +980,20 @@ class BucklespringApp:
         self._drain_diagnostic_queue()
 
     def tr(self, key: str, **kwargs: object) -> str:
+        """
+        Devuelve el texto traducido para 'key' en el idioma activo.
+        Si el template tiene un placeholder que no coincide con kwargs, retorna el template
+        sin formatear para evitar un KeyError/ValueError que crashearía la UI.
+        """
         translations = TRANSLATIONS.get(self.engine.language, TRANSLATIONS[DEFAULT_LANGUAGE])
         fallback = TRANSLATIONS[DEFAULT_LANGUAGE]
         template = translations.get(key, fallback.get(key, key))
-        return template.format(**kwargs)
+        try:
+            return template.format(**kwargs)
+        except (KeyError, ValueError):
+            # Placeholder faltante o formato inválido — retornar el template crudo
+            # para no crashear la UI en producción
+            return template
 
     def hotkey_label(self, action: str) -> str:
         translations = HOTKEY_TRANSLATIONS.get(self.engine.language, HOTKEY_TRANSLATIONS[DEFAULT_LANGUAGE])
@@ -1202,6 +1210,23 @@ class BucklespringApp:
         self.exit_button = self._make_action_button(command_row, self.tr("button_exit_session"), self.exit_application, "#31151a", ACCENT_RED)
         self.exit_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
+        donate_row = tk.Frame(controls_body, bg=PANEL_COLOR)
+        donate_row.pack(fill="x", pady=(8, 0))
+        self.donate_button = self._make_action_button(
+            donate_row,
+            self.tr("button_donate"),
+            # Ejecutar en thread daemon para no bloquear la GUI mientras el SO
+            # lanza el navegador (webbrowser.open puede tardar en algunos sistemas)
+            lambda: threading.Thread(
+                target=webbrowser.open,
+                args=(PAYPAL_DONATE_URL,),
+                daemon=True,
+            ).start(),
+            "#2a1a00",
+            ACCENT_ORANGE,
+        )
+        self.donate_button.pack(fill="x")
+
         hotkey_panel = tk.Frame(controls_body, bg=PANEL_COLOR)
         hotkey_panel.pack(fill="x", pady=(18, 0))
         self.command_keys_label = tk.Label(
@@ -1291,18 +1316,6 @@ class BucklespringApp:
         self.fn_lab_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
         self.about_button = self._make_action_button(lab_actions, self.tr("button_about"), self.show_about_dialog, "#14242c", TEXT_PRIMARY)
         self.about_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
-
-        # Botón de donación — abre el enlace de PayPal en el navegador predeterminado
-        donate_row = tk.Frame(hotkey_panel, bg=PANEL_COLOR)
-        donate_row.pack(fill="x", pady=(8, 0))
-        self.donate_button = self._make_action_button(
-            donate_row,
-            self.tr("button_donate"),
-            lambda: webbrowser.open(PAYPAL_DONATE_URL),
-            "#2a1a00",  # Fondo ámbar oscuro
-            ACCENT_ORANGE,
-        )
-        self.donate_button.pack(fill="x")
 
         output_body = output["body"]
         visuals = tk.Frame(output_body, bg=PANEL_COLOR)

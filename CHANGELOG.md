@@ -1,5 +1,13 @@
 # Changelog
 
+## V1.5.6 - 2026-04-22
+
+- Fixed `tr()` translator not guarding against `KeyError`/`ValueError` from `str.format()` — a missing or mismatched placeholder in any translation template could crash the UI silently in the windowed `.exe`; the method now returns the raw template when formatting fails.
+- Fixed `_setup_mixer()` catching only `pygame.error`; on systems without an audio driver the mixer can raise `OSError` or `RuntimeError`, which previously leaked as an unhandled exception during `SoundEngine.__init__`; now catches `Exception` and sets `mixer_ready = False` so the app continues without audio.
+- Fixed `webbrowser.open()` being called on the main GUI thread when the donate button is clicked; on some systems this call can block briefly and freeze the window; it is now dispatched to a daemon thread.
+- Fixed `from datetime import datetime` being re-executed inside the body of `write_error_log`, `write_app_log`, and `write_debug_log` on every log call; moved to module-level import alongside the existing `date` import.
+- Fixed donate button being placed at the bottom of the hotkey panel where it was clipped by the window height; moved to a dedicated row between the tray/exit buttons and the hotkey section so it is always visible.
+
 ## V1.5.5 - 2026-04-22
 
 - Added `log.txt` debug log (`%LOCALAPPDATA%\Bucklespring\log.txt`) that captures all lifecycle events (session start/end), thread exceptions, pystray failures and uncaught exceptions with timestamps and thread names. Created automatically on first run.
