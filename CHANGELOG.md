@@ -1,5 +1,14 @@
 # Changelog
 
+## V1.5.5 - 2026-04-22
+
+- Added `log.txt` debug log (`%LOCALAPPDATA%\Bucklespring\log.txt`) that captures all lifecycle events (session start/end), thread exceptions, pystray failures and uncaught exceptions with timestamps and thread names. Created automatically on first run.
+- Fixed missing `SESSION END` entry when the mainloop terminates due to an unhandled exception — the recovery handler now writes both `app.log` and `log.txt` before exiting.
+- Added `sys.excepthook` to capture and log uncaught exceptions in the main thread before Python prints them to stderr (which is invisible in the windowed `.exe`).
+- Added `threading.excepthook` (Python 3.8+) to detect and log unhandled exceptions in secondary threads (audio worker, pystray internal thread) that previously died silently.
+- Fixed `refresh_ui()` — wrapped `tray_icon.title` and `tray_icon.update_menu()` in `try/except` so a pystray failure does not propagate to the main thread and crash the app without logging.
+- Added "Buy me a beer" donate button (PayPal) to the Controls panel with full EN/ES localization; opens the donation page in the system default browser.
+
 ## V1.5.4 - 2026-04-21
 
 - Added start-minimized-to-tray behavior: the main window is now hidden (`withdraw`) before `mainloop()` starts so the app boots silently into the tray without flashing the GUI on screen. Users open the window by double-clicking the tray icon or using the `SEND TO TRAY` hotkey (Ctrl+Alt+H).

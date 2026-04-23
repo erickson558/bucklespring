@@ -22,6 +22,7 @@ import threading
 import tkinter as tk
 import traceback  # Para capturar stack traces completos en logs de error
 import warnings
+import webbrowser  # Abrir el enlace de donación en el navegador predeterminado
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -48,7 +49,11 @@ VOLUME_STEP = 0.05      # Incremento/decremento al pulsar los botones +/- 5%
 CONFIG_FILE_NAME = "config.json"        # Nombre del archivo de configuración persistente
 ERROR_LOG_FILE_NAME = "error.log"       # Log de errores para diagnóstico (sin consola en .exe)
 APP_LOG_FILE_NAME   = "app.log"         # Log de sesión: arranca, cierra, hibernación
+DEBUG_LOG_FILE_NAME = "log.txt"         # Log de depuración detallado: eventos, hilos, excepciones
 LEGACY_CONFIG_FILE = Path.home() / ".keyboard_sounds_config.json"  # Ruta heredada de versiones anteriores
+
+# URL de donación — se abre en el navegador predeterminado al hacer clic en el botón
+PAYPAL_DONATE_URL = "https://www.paypal.com/donate/?hosted_button_id=ZABFRXC2P3JQN"
 
 # ── Constantes de la aplicación ─────────────────────────────────────────────
 TRAY_TITLE = f"{APP_NAME} {APP_VERSION}"   # Título mostrado al pasar el cursor sobre el icono del tray
@@ -121,6 +126,7 @@ TRANSLATIONS = {
         "button_reset_defaults": "RESET DEFAULTS",
         "button_fn_lab": "FN CAPTURE LAB",
         "button_about": "ABOUT",
+        "button_donate": "BUY ME A BEER",
         "output_hint": "Dial the ring or click the bars to set live output with exact persistence.",
         "output_state_active": "TRAY MIRROR ACTIVE",
         "output_state_muted": "AUDIO PATH MUTED",
@@ -210,6 +216,7 @@ TRANSLATIONS = {
         "button_reset_defaults": "RESTAURAR ATAJOS",
         "button_fn_lab": "LABORATORIO FN",
         "button_about": "ACERCA DE",
+        "button_donate": "INVITAME UNA CERVEZA",
         "output_hint": "Gira el anillo o haz clic en las barras para ajustar la salida en vivo con persistencia exacta.",
         "output_state_active": "MODO TRAY ACTIVO",
         "output_state_muted": "RUTA DE AUDIO SILENCIADA",
@@ -424,6 +431,31 @@ def write_app_log(message: str) -> None:
             f.write(f"[{timestamp}] {message}\n")
     except Exception:
         pass  # Si el log falla, no interrumpir la ejecución
+
+
+def debug_log_path() -> Path:
+    """Ruta del log de depuración detallado en %LOCALAPPDATA%\\Bucklespring\\log.txt."""
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    base_dir = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+    return base_dir / APP_NAME / DEBUG_LOG_FILE_NAME
+
+
+def write_debug_log(message: str) -> None:
+    """
+    Escribe una entrada al log de depuración (log.txt). Se crea automáticamente si no existe.
+    Captura sesiones, errores, excepciones de hilos y eventos de pystray.
+    Thread-safe: usa append atómico; silencia fallos de I/O para no interrumpir la ejecución.
+    """
+    try:
+        log = debug_log_path()
+        log.parent.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        thread_name = threading.current_thread().name
+        with log.open("a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] [{thread_name}] {message}\n")
+    except Exception:
+        pass  # No interrumpir la ejecución si el log falla
 
 
 def iter_config_paths(*preferred_paths: Path) -> tuple[Path, ...]:
@@ -998,6 +1030,7 @@ class BucklespringApp:
         self.hotkey_reset_button.configure(text=self.tr("button_reset_defaults"))
         self.fn_lab_button.configure(text=self.tr("button_fn_lab"))
         self.about_button.configure(text=self.tr("button_about"))
+        self.donate_button.configure(text=self.tr("button_donate"))
         self.output_hint_label.configure(text=self.tr("output_hint"))
         self.decrease_button.configure(text=self.tr("button_decrease_volume"))
         self.increase_button.configure(text=self.tr("button_increase_volume"))
@@ -1258,6 +1291,18 @@ class BucklespringApp:
         self.fn_lab_button.pack(side="left", expand=True, fill="x", padx=(0, 6))
         self.about_button = self._make_action_button(lab_actions, self.tr("button_about"), self.show_about_dialog, "#14242c", TEXT_PRIMARY)
         self.about_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
+
+        # Botón de donación — abre el enlace de PayPal en el navegador predeterminado
+        donate_row = tk.Frame(hotkey_panel, bg=PANEL_COLOR)
+        donate_row.pack(fill="x", pady=(8, 0))
+        self.donate_button = self._make_action_button(
+            donate_row,
+            self.tr("button_donate"),
+            lambda: webbrowser.open(PAYPAL_DONATE_URL),
+            "#2a1a00",  # Fondo ámbar oscuro
+            ACCENT_ORANGE,
+        )
+        self.donate_button.pack(fill="x")
 
         output_body = output["body"]
         visuals = tk.Frame(output_body, bg=PANEL_COLOR)
@@ -2027,8 +2072,12 @@ class BucklespringApp:
         # en pystray 0.19.5 (verifica visible internamente), pero guardamos el flag
         # para mayor claridad y compatibilidad con versiones futuras de pystray.
         if self._tray_started:
-            self.tray_icon.title = f"{TRAY_TITLE} - {self.tr('tray_title_active') if self.engine.enabled else self.tr('tray_title_muted')}"
-            self.tray_icon.update_menu()
+            try:
+                # Protegido: pystray puede lanzar excepciones en su hilo interno
+                self.tray_icon.title = f"{TRAY_TITLE} - {self.tr('tray_title_active') if self.engine.enabled else self.tr('tray_title_muted')}"
+                self.tray_icon.update_menu()
+            except Exception as exc:
+                write_debug_log(f"WARNING pystray update failed: {exc}")
         self._update_menu_labels()
         self._draw_volume_dial()
         self._draw_volume_meter()
@@ -2170,8 +2219,9 @@ class BucklespringApp:
         # Apagar motor de audio y desregistrar hooks de teclado
         self.engine.shutdown()
 
-        # Registrar el cierre normal en el log de sesión antes de destruir la ventana
+        # Registrar el cierre normal en el log de sesión y en el log de depuración
         write_app_log(f"SESSION END — {APP_NAME} {APP_VERSION} cerrado correctamente")
+        write_debug_log(f"SESSION END — cerrado correctamente")
 
         # Destruir la ventana — esto hace que mainloop() retorne en start()
         self.root.destroy()
@@ -2229,8 +2279,32 @@ def main() -> int:
 
     atexit.register(guard.release)
 
+    # Capturar excepciones no controladas en el hilo principal y escribirlas al log de depuración.
+    # Esto actúa como red de seguridad para crashes que escapan todos los try/except explícitos.
+    def _global_excepthook(exc_type: type, exc_value: BaseException, exc_tb: object) -> None:
+        tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))  # type: ignore[arg-type]
+        write_debug_log(f"UNCAUGHT EXCEPTION (main thread): {exc_type.__name__}: {exc_value}\n{tb_str}")
+        write_error_log(f"Uncaught exception: {exc_type.__name__}: {exc_value}\n{tb_str}")
+        write_app_log(f"SESSION END — {APP_NAME} {APP_VERSION} (uncaught exception)")
+        sys.__excepthook__(exc_type, exc_value, exc_tb)  # type: ignore[arg-type]
+
+    sys.excepthook = _global_excepthook
+
+    # Capturar excepciones no controladas en hilos secundarios (Python 3.8+).
+    # Sin esto, un crash en el hilo de audio o pystray muere silenciosamente.
+    def _thread_excepthook(args: threading.ExceptHookArgs) -> None:
+        if args.exc_type is SystemExit:
+            return  # SystemExit en un hilo no es un crash
+        tb_str = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_tb))
+        thread_name = args.thread.name if args.thread else "unknown"
+        write_debug_log(f"UNCAUGHT EXCEPTION (thread={thread_name}): {args.exc_type.__name__}: {args.exc_value}\n{tb_str}")
+        write_error_log(f"Thread crash [{thread_name}]: {args.exc_type.__name__}: {args.exc_value}\n{tb_str}")
+
+    threading.excepthook = _thread_excepthook
+
     # Registrar el arranque de sesión antes de construir la GUI
     write_app_log(f"SESSION START — {APP_NAME} {APP_VERSION}")
+    write_debug_log(f"SESSION START — {APP_NAME} {APP_VERSION}")
 
     # FIX: Envolver la construcción de la app en try/except para mostrar el error
     # al usuario en lugar de crashear silenciosamente (crítico en modo .exe sin consola).
@@ -2259,9 +2333,14 @@ def main() -> int:
     try:
         app.start()
     except Exception as exc:
-        # Error inesperado durante el mainloop (muy raro pero registrado)
-        write_app_log(f"UNEXPECTED ERROR in mainloop: {exc}\n{traceback.format_exc()}")
-        write_error_log(f"Unexpected mainloop error: {exc}\n{traceback.format_exc()}")
+        # Error inesperado durante el mainloop: registrar en todos los logs y escribir SESSION END
+        tb = traceback.format_exc()
+        write_app_log(f"UNEXPECTED ERROR in mainloop: {exc}\n{tb}")
+        write_error_log(f"Unexpected mainloop error: {exc}\n{tb}")
+        write_debug_log(f"CRASH mainloop: {exc}\n{tb}")
+        # Garantizar que SESSION END quede registrado aunque el cierre sea abrupto
+        write_app_log(f"SESSION END — {APP_NAME} {APP_VERSION} (crash recovery)")
+        write_debug_log(f"SESSION END (crash recovery)")
     finally:
         guard.release()
     return 0

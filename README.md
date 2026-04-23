@@ -4,7 +4,7 @@ Bucklespring reproduce sonidos mecánicos de teclado en Windows usando un hook g
 
 ## Versión actual
 
-`V1.5.4`
+`V1.5.5`
 
 El proyecto usa versionado `Vx.x.x` con criterio semántico:
 - `major`: cambios incompatibles.
@@ -32,7 +32,7 @@ El proyecto usa versionado `Vx.x.x` con criterio semántico:
 
 ## Cambios recientes
 
-- `V1.5.4`: la app ahora inicia minimizada al tray sin mostrar la ventana; loop de animación de fondo suspendido cuando la ventana está oculta (ahorro de CPU); fix de eventos `<Unmap>` espurios propagados desde widgets hijos.
+- `V1.5.5`: la app ahora inicia minimizada al tray sin mostrar la ventana; loop de animación de fondo suspendido cuando la ventana está oculta (ahorro de CPU); fix de eventos `<Unmap>` espurios propagados desde widgets hijos.
 - `V1.5.3`: log de sesión (`app.log`) con registro de arranque, cierre y duplicados; instancia única mejorada con bring-to-front automático y aviso informativo cuando la app ya está activa en el tray; fix de doble `save_settings()` al ajustar volumen desde botones.
 - `V1.5.2`: corrección de crash silencioso al arrancar — mutex `Global\` con fallback a `Local\`, `keyboard.hook()` protegido con `try/except`, `BucklespringApp()` envuelto en manejo de errores con messagebox diagnóstico, log de errores a `%LOCALAPPDATA%\Bucklespring\error.log`, cancelación correcta del loop de diagnóstico al salir, y comentarios exhaustivos en todo el código.
 - `V1.5.1`: el worker de audio ahora sobrevive a WAV dañados o ausentes, se ignoran liberaciones huérfanas para evitar clics fantasma y la configuración cae a una ruta segura si la carpeta de la app no permite escritura.
