@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.5.7 - 2026-04-24
+
+- Fixed `_on_unmap` handler parameter named `_event` (underscore prefix conventionally means "unused") while actually accessing `_event.widget`; renamed to `event` to correctly signal that the argument is used, preventing confusion for linters and future maintainers.
+- Fixed health status chips (`HOOK LIVE`, `TRAY READY`, `ASYNC AUDIO`) being initialized with hardcoded English string literals instead of `tr()` calls; now respect the configured language from the very first visible frame, so Spanish-configured users no longer see English chip labels before `refresh_ui()` corrects them.
+- Removed orphaned `on_volume_change` method — dead code left over from a previously removed `Scale` widget; was never called anywhere in the codebase and could confuse future maintainers.
+
 ## V1.5.6 - 2026-04-22
 
 - Fixed `tr()` translator not guarding against `KeyError`/`ValueError` from `str.format()` — a missing or mismatched placeholder in any translation template could crash the UI silently in the windowed `.exe`; the method now returns the raw template when formatting fails.

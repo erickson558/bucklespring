@@ -4,7 +4,7 @@ Bucklespring reproduce sonidos mecánicos de teclado en Windows usando un hook g
 
 ## Versión actual
 
-`V1.5.5`
+`V1.5.7`
 
 El proyecto usa versionado `Vx.x.x` con criterio semántico:
 - `major`: cambios incompatibles.
@@ -32,6 +32,8 @@ El proyecto usa versionado `Vx.x.x` con criterio semántico:
 
 ## Cambios recientes
 
+- `V1.5.7`: corrección del naming del parámetro `_event` en `_on_unmap` (se accedía a `_event.widget` pero la convención de guion bajo implica que el argumento es ignorado); corrección de los health chips inicializados con texto inglés hardcodeado en lugar de `tr()` (ahora respetan el idioma configurado desde el primer frame visible); eliminación del método muerto `on_volume_change` (legacy de un widget Scale ya removido).
+- `V1.5.6`: fix del traductor `tr()` para no crashear en placeholders inválidos; fix del mixer capturando solo `pygame.error` (ahora captura `Exception`); fix de `webbrowser.open()` en daemon thread; fix de import `datetime` movido al nivel de módulo; fix de posición del botón de donación.
 - `V1.5.5`: la app ahora inicia minimizada al tray sin mostrar la ventana; loop de animación de fondo suspendido cuando la ventana está oculta (ahorro de CPU); fix de eventos `<Unmap>` espurios propagados desde widgets hijos.
 - `V1.5.3`: log de sesión (`app.log`) con registro de arranque, cierre y duplicados; instancia única mejorada con bring-to-front automático y aviso informativo cuando la app ya está activa en el tray; fix de doble `save_settings()` al ajustar volumen desde botones.
 - `V1.5.2`: corrección de crash silencioso al arrancar — mutex `Global\` con fallback a `Local\`, `keyboard.hook()` protegido con `try/except`, `BucklespringApp()` envuelto en manejo de errores con messagebox diagnóstico, log de errores a `%LOCALAPPDATA%\Bucklespring\error.log`, cancelación correcta del loop de diagnóstico al salir, y comentarios exhaustivos en todo el código.

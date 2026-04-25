@@ -1147,11 +1147,14 @@ class BucklespringApp:
         self.hero_exit_button.pack(anchor="e", fill="x", pady=(0, 12))
         self.health_stack = tk.Frame(right_hero, bg=PANEL_ALT_COLOR)
         self.health_stack.pack(anchor="e", fill="x")
+        # FIX: Usar tr() para los chips de estado del motor en lugar de literales en inglés.
+        # Si el idioma configurado es español, los chips deben mostrarse en español desde el
+        # primer frame visible — no después de que refresh_ui() los corrija.
         self.health_chips: list[tk.Label] = []
-        for label in ("HOOK LIVE", "TRAY READY", "ASYNC AUDIO"):
+        for chip_key in ("health_hook_live", "health_tray_ready", "health_async_audio"):
             chip = tk.Label(
                 self.health_stack,
-                text=label,
+                text=self.tr(chip_key),   # texto localizado desde el inicio
                 bg="#0b3038",
                 fg=TEXT_PRIMARY,
                 font=("Consolas", 9),
@@ -1821,11 +1824,12 @@ class BucklespringApp:
             draw.line((x, 24, x, 40), fill=(195, 198, 204, 255), width=1)
         return image
 
-    def _on_unmap(self, _event: tk.Event) -> None:
+    def _on_unmap(self, event: tk.Event) -> None:
         # FIX: Ignorar eventos Unmap de widgets hijos — solo reaccionar cuando es la ventana raíz.
         # tkinter propaga <Unmap> hacia arriba desde cualquier subwidget, lo que causaba
         # invocaciones innecesarias de hide_window() por cada panel o frame desmapeado.
-        if _event.widget is not self.root:
+        # NOTA: el parámetro se llama 'event' (sin guion bajo) porque sí se accede a event.widget.
+        if event.widget is not self.root:
             return
         # Cuando el usuario minimiza con el botón nativo de Windows (no con nuestro botón),
         # el estado pasa a "iconic" — lo interceptamos para mandarlo al tray en vez de minimizar.
@@ -2094,14 +2098,6 @@ class BucklespringApp:
         self._update_menu_labels()
         self._draw_volume_dial()
         self._draw_volume_meter()
-
-    def on_volume_change(self, raw_value: str) -> None:
-        try:
-            value = float(raw_value) / 100
-        except (TypeError, ValueError):
-            return
-        self.engine.set_volume(value)
-        self.refresh_ui()
 
     def toggle_enabled(self) -> None:
         self.engine.toggle_enabled()
