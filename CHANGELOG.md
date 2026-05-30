@@ -1,5 +1,12 @@
 # Changelog
 
+## V1.5.8 - 2026-05-30
+
+- Fixed window flash on startup: `root.withdraw()` moved from `start()` to `__init__` right after `tk.Tk()`, so the window is never visible during UI construction. Previously the window appeared briefly on screen before being hidden.
+- Fixed crash on simultaneous exit triggers (hotkey + tray click): added `_exiting: bool` guard to `exit_application()`. The second call returns immediately, preventing double-cancellation of `after()` IDs and double-destruction of the tkinter root that caused `TclError` crashes.
+- Fixed `_animate_background()` crashing on window destruction: added `if self._exiting: return` early exit and wrapped the entire body in `try/except tk.TclError` to handle the race condition where the root is destroyed between the `_exiting` check and the `after()` call.
+- Fixed `_drain_diagnostic_queue()` crashing on window destruction: added `if self._exiting: return` guard and wrapped the `root.after()` rescheduling call in `try/except tk.TclError` for the same race condition.
+
 ## V1.5.7 - 2026-04-24
 
 - Fixed `_on_unmap` handler parameter named `_event` (underscore prefix conventionally means "unused") while actually accessing `_event.widget`; renamed to `event` to correctly signal that the argument is used, preventing confusion for linters and future maintainers.

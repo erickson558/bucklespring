@@ -895,6 +895,10 @@ class BucklespringApp:
         self.root.bind("<Unmap>", self._on_unmap)
         self.root.geometry("980x780")
         self.root.minsize(940, 740)
+        # FIX: Ocultar la ventana ANTES de construir la UI para eliminar el flash visual
+        # que ocurría entre tk.Tk() y el withdraw() que antes estaba solo en start().
+        # Esto garantiza que el usuario NUNCA vea la ventana en el arranque.
+        self.root.withdraw()
 
         icon_path = resolve_icon_path()
         if icon_path.exists():
@@ -936,6 +940,10 @@ class BucklespringApp:
         # FIX: Flag para saber si el tray icon ya fue iniciado con run_detached()
         # update_menu() y title solo tienen efecto después de run_detached()
         self._tray_started: bool = False
+        # FIX: Guard contra doble llamada a exit_application() (hotkey + tray simultáneo)
+        # sin este flag, la segunda llamada intenta cancelar after() ya cancelados y
+        # destruir una ventana ya destruida, causando TclError y crashes erráticos.
+        self._exiting: bool = False
         self.diagnostic_events: queue.Queue[KeyEventSnapshot] = queue.Queue()
         self.fn_capture_window: tk.Toplevel | None = None
         self.fn_capture_text: scrolledtext.ScrolledText | None = None
@@ -1612,7 +1620,13 @@ class BucklespringApp:
         FIX: El ID del after ahora se almacena en self._drain_after_id para poder
         cancelarlo correctamente en exit_application() y evitar TclError al intentar
         reprogramarse sobre una ventana ya destruida.
+        FIX V1.5.8: Guarda _exiting para abortar el loop antes de llamar after(),
+        y envuelve after() en try/except TclError por si la ventana ya fue destruida.
         """
+        # Salir inmediatamente si la app está en proceso de cierre
+        if self._exiting:
+            return
+
         while True:
             try:
                 snapshot = self.diagnostic_events.get_nowait()
@@ -1621,7 +1635,11 @@ class BucklespringApp:
             self._append_diagnostic_snapshot(snapshot)
 
         # Guardar el ID para poder cancelarlo durante el exit
-        self._drain_after_id = self.root.after(80, self._drain_diagnostic_queue)
+        # TclError ocurre si la ventana fue destruida justo antes de llegar aquí
+        try:
+            self._drain_after_id = self.root.after(80, self._drain_diagnostic_queue)
+        except tk.TclError:
+            pass
 
     def _append_diagnostic_snapshot(self, snapshot: KeyEventSnapshot) -> None:
         if self.fn_capture_text is None or self.fn_capture_window is None:
@@ -1878,29 +1896,39 @@ class BucklespringApp:
         )
 
     def _animate_background(self) -> None:
+        # FIX: Abortar si la app está cerrando — evita TclError al llamar after()
+        # sobre una ventana en proceso de destrucción.
+        if self._exiting:
+            return
         # FIX: Cuando la ventana está oculta (withdraw), no tiene sentido redibujar el canvas.
         # Reducimos la frecuencia de reprogramación a 500ms para ahorrar CPU mientras la app
         # reside en el tray sin que el usuario vea la animación.
-        if self.root.state() == "withdrawn":
-            self.background_after_id = self.root.after(500, self._animate_background)
-            return
-        width = max(self.root.winfo_width(), 860)
-        height = max(self.root.winfo_height(), 560)
-        travel = max(height - 120, 1)
-        self.scanline_y = 60 + ((self.scanline_y + 7) % travel)
-        self.background.delete("scan")
-        self.background.create_rectangle(
-            0,
-            self.scanline_y - 2,
-            width,
-            self.scanline_y + 2,
-            fill="#0b313c",
-            outline="",
-            tags="scan",
-        )
-        self.background.create_line(0, self.scanline_y, width, self.scanline_y, fill=ACCENT_CYAN, width=1, tags="scan")
-        self.background.create_line(0, self.scanline_y + 8, width, self.scanline_y + 8, fill="#103341", width=1, tags="scan")
-        self.background_after_id = self.root.after(90, self._animate_background)
+        # Envolvemos todo en try/except TclError por si el root fue destruido entre el
+        # chequeo de _exiting y la ejecución de after() (race condition al cerrar rápido).
+        try:
+            if self.root.state() == "withdrawn":
+                self.background_after_id = self.root.after(500, self._animate_background)
+                return
+            width = max(self.root.winfo_width(), 860)
+            height = max(self.root.winfo_height(), 560)
+            travel = max(height - 120, 1)
+            self.scanline_y = 60 + ((self.scanline_y + 7) % travel)
+            self.background.delete("scan")
+            self.background.create_rectangle(
+                0,
+                self.scanline_y - 2,
+                width,
+                self.scanline_y + 2,
+                fill="#0b313c",
+                outline="",
+                tags="scan",
+            )
+            self.background.create_line(0, self.scanline_y, width, self.scanline_y, fill=ACCENT_CYAN, width=1, tags="scan")
+            self.background.create_line(0, self.scanline_y + 8, width, self.scanline_y + 8, fill="#103341", width=1, tags="scan")
+            self.background_after_id = self.root.after(90, self._animate_background)
+        except tk.TclError:
+            # Ventana destruida durante el ciclo de animación — terminar silenciosamente
+            pass
 
     def _draw_volume_meter(self) -> None:
         if not hasattr(self, "volume_canvas"):
@@ -2190,10 +2218,9 @@ class BucklespringApp:
         self.tray_icon.run_detached()   # Inicia el tray en background thread
         self._tray_started = True       # A partir de aquí, refresh_ui puede actualizar el tray
 
-        # FEATURE: Iniciar minimizado al tray.
-        # withdraw() oculta la ventana antes de que mainloop() la pinte en pantalla.
-        # El usuario puede recuperarla haciendo doble clic en el icono del tray
-        # o usando el hotkey SEND TO TRAY (ctrl+alt+h).
+        # La ventana ya está oculta desde __init__ (withdraw temprano).
+        # Este segundo withdraw() es defensivo: garantiza que aunque fuera re-mostrada
+        # entre __init__ y start(), vuelva a ocultarse antes del mainloop.
         self.root.withdraw()
 
         self.refresh_ui()               # Primera actualización del tray con estado correcto
@@ -2208,7 +2235,15 @@ class BucklespringApp:
         4. Destruye la ventana principal (termina mainloop).
         FIX: Se cancela _drain_after_id además de background_after_id para evitar
         que el drain loop intente reprogramarse sobre la ventana ya destruida.
+        FIX V1.5.8: Guard _exiting previene doble invocación (hotkey + clic en tray
+        simultáneo), que causaba TclError por cancelar after() ya cancelados y
+        destruir ventanas ya destruidas.
         """
+        # Guard: si ya estamos cerrando, no hacer nada (previene crashes por doble exit)
+        if self._exiting:
+            return
+        self._exiting = True  # Señal global — los loops de after() se detienen solos
+
         # Cancelar el loop de animación del fondo
         if self.background_after_id:
             self.root.after_cancel(self.background_after_id)

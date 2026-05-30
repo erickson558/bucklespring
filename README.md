@@ -4,7 +4,7 @@ Bucklespring reproduce sonidos mecánicos de teclado en Windows usando un hook g
 
 ## Versión actual
 
-`V1.5.7`
+`V1.5.8`
 
 El proyecto usa versionado `Vx.x.x` con criterio semántico:
 - `major`: cambios incompatibles.
@@ -32,6 +32,7 @@ El proyecto usa versionado `Vx.x.x` con criterio semántico:
 
 ## Cambios recientes
 
+- `V1.5.8`: prevención de flash visual al iniciar — `withdraw()` movido a `__init__` antes de construir la UI; guard `_exiting` que previene doble invocación de `exit_application()` (hotkey + clic en tray simultáneo causaba TclError); loops `_animate_background` y `_drain_diagnostic_queue` protegidos con `try/except TclError` y chequeo de `_exiting` para abortar silenciosamente si la ventana ya fue destruida.
 - `V1.5.7`: corrección del naming del parámetro `_event` en `_on_unmap` (se accedía a `_event.widget` pero la convención de guion bajo implica que el argumento es ignorado); corrección de los health chips inicializados con texto inglés hardcodeado en lugar de `tr()` (ahora respetan el idioma configurado desde el primer frame visible); eliminación del método muerto `on_volume_change` (legacy de un widget Scale ya removido).
 - `V1.5.6`: fix del traductor `tr()` para no crashear en placeholders inválidos; fix del mixer capturando solo `pygame.error` (ahora captura `Exception`); fix de `webbrowser.open()` en daemon thread; fix de import `datetime` movido al nivel de módulo; fix de posición del botón de donación.
 - `V1.5.5`: la app ahora inicia minimizada al tray sin mostrar la ventana; loop de animación de fondo suspendido cuando la ventana está oculta (ahorro de CPU); fix de eventos `<Unmap>` espurios propagados desde widgets hijos.
